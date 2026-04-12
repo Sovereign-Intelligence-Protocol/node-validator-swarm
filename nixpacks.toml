@@ -3,11 +3,10 @@ nixPkgs = ["python311Full", "playwright"]
 
 [phases.install]
 cmds = [
-  "python -m venv /opt/venv",
-  "/opt/venv/bin/pip install --upgrade pip",
-  "/opt/venv/bin/pip install -r requirements.txt",
-  "/opt/venv/bin/playwright install --with-deps chromium"
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt",
+  "playwright install --with-deps chromium"
 ]
 
 [start]
-cmd = "/opt/venv/bin/python main.py"
+cmd = "python main.py"
