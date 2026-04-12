@@ -71,6 +71,11 @@ def scrape_real_data_playwright(query, search_depth=3):
 
 def swarm_engine():
     print("[*] SWARM ENGINE THREAD ACTIVE.")
+    # --- HARD-CODED AUTO-START ---
+    if r: 
+        r.set("swarm_active", "true")
+        r.lpush("swarm_responses", "🚀 REALITY BRIDGE AUTO-ACTIVATED.")
+    
     city_idx, cat_idx = 0, 0
     while True:
         try:
@@ -81,7 +86,6 @@ def swarm_engine():
             if not r.exists("total_data_points"): r.set("total_data_points", 0)
             if not r.exists("next_batch_countdown"): r.set("next_batch_countdown", NODE_BATCH_SIZE)
             
-            # --- KEY SYNC: Use 'swarm_commands' for all operations ---
             cmd = r.rpop("swarm_commands")
             if cmd:
                 msg = str(cmd).strip()
@@ -100,6 +104,8 @@ def swarm_engine():
                     r.incrby("total_data_points", count)
                     r.decrby("next_batch_countdown", count)
                     r.lpush("swarm_responses", f"✅ VALIDATED {count} DATA POINTS in {city} ({cat})")
+                    if count > 0:
+                        r.lpush("swarm_responses", f"📍 FIRST REAL LEAD: {verified_data[0][0]} | {verified_data[0][1]}")
 
                 if int(r.get("next_batch_countdown")) <= 0:
                     r.set("next_batch_countdown", NODE_BATCH_SIZE)
@@ -133,7 +139,6 @@ def index():
         #chat { height: 350px; overflow-y: auto; background: #111; text-align: left; padding: 10px; border: 1px solid #333; font-size: 12px; }
         input { width: 60%; padding: 12px; background: #000; border: 1px solid #00f2fe; color: #fff; }
         button { padding: 12px; background: #00f2fe; color: #000; border: none; font-weight: bold; }
-        #status { font-size: 10px; color: #555; margin-top: 5px; }
     </style></head><body>
     <h1>NODE-VALIDATOR SWARM</h1>
     <div class="box">
@@ -143,26 +148,9 @@ def index():
     </div>
     <div id="chat"></div><br>
     <input id="i" placeholder="/start-swarm..."><button onclick="s()">SEND</button>
-    <div id="status">BRIDGE READY | WAITING FOR COMMAND</div>
     <script>
-        async function s(){
-            const i=document.getElementById("i"); 
-            const st=document.getElementById("status");
-            st.innerText = "TRANSMITTING COMMAND...";
-            await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})}); 
-            st.innerText = "COMMAND SENT TO BRIDGE";
-            i.value="";
-            setTimeout(() => { st.innerText = "BRIDGE READY | WAITING FOR COMMAND"; }, 2000);
-        }
-        async function u(){
-            try {
-                const r=await fetch("/data"); 
-                const d=await r.json(); 
-                document.getElementById("t").innerText=d.t; 
-                document.getElementById("n").innerText=d.n; 
-                document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");
-            } catch(e) {}
-        }
+        async function s(){const i=document.getElementById("i"); await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})}); i.value="";}
+        async function u(){const r=await fetch("/data"); const d=await r.json(); document.getElementById("t").innerText=d.t; document.getElementById("n").innerText=d.n; document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");}
         setInterval(u, 3000);
     </script></body></html>
     """, t=t, n=n, op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
@@ -171,9 +159,7 @@ def index():
 def send():
     msg = request.json.get("message")
     if r: 
-        # --- KEY SYNC: Dashboard now pushes to 'swarm_commands' ---
         r.lpush("swarm_commands", msg)
-        print(f"[*] NODE COMMAND RECEIVED VIA WEB: {msg}")
     return jsonify({"ok":True})
 
 @app.route("/data")
@@ -183,5 +169,4 @@ def data():
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
-    print(f"[*] STARTING NODE ON PORT {port}")
     app.run(host="0.0.0.0", port=port)
