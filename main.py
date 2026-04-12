@@ -12,24 +12,25 @@ except ImportError:
 app = Flask(__name__)
 
 # --- Reality Bridge Configuration (Environment Variables) ---
+# OPERATOR_NODE_ID fuels the swarm's search logic (System Fuel)
+# COLLECTOR_NODE_ID is the exclusive destination for all verified data outputs.
 OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 print(f"[*] INITIALIZING REALITY BRIDGE...")
-print(f"[*] OPERATOR: {OPERATOR_NODE_ID}")
-print(f"[*] COLLECTOR: {COLLECTOR_NODE_ID}")
-print(f"[*] REDIS_URL: {REDIS_URL}")
+print(f"[*] OPERATOR NODE: {OPERATOR_NODE_ID}")
+print(f"[*] COLLECTOR NODE: {COLLECTOR_NODE_ID}")
 
 try:
     r = redis.from_url(REDIS_URL, decode_responses=True)
     r.ping()
-    print("[+] REDIS CONNECTED SUCCESSFULLY.")
+    print("[+] REDIS NODE CONNECTED.")
 except Exception as e:
-    print(f"[-] REDIS CONNECTION FAILED: {e}")
+    print(f"[-] REDIS NODE FAILED: {e}")
     r = None
 
-LEAD_BATCH_SIZE = 1000
+NODE_BATCH_SIZE = 1000
 TOP_50_CITIES = [
     "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX", "Phoenix, AZ",
     "Philadelphia, PA", "San Antonio, TX", "San Diego, CA", "Dallas, TX", "Jacksonville, FL",
@@ -42,72 +43,72 @@ TOP_50_CITIES = [
     "Omaha, NE", "Miami, FL", "Virginia Beach, VA", "Long Beach, CA", "Oakland, CA",
     "Minneapolis, MN", "Bakersfield, CA", "Tulsa, OK", "Tampa, FL", "Arlington, TX"
 ]
-INDUSTRIES = ["Roofers", "Plumbers", "HVAC"]
+TARGET_CATEGORIES = ["Roofers", "Plumbers", "HVAC"]
 
 def scrape_real_data_playwright(query, search_depth=3):
-    leads = []
-    print(f"[*] STARTING SCRAPE FOR: {query}")
+    data_points = []
+    print(f"[*] OPERATOR NODE STARTING SEARCH: {query}")
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             for i in range(search_depth):
-                print(f"[*] SCRAPING PAGE {i+1}...")
+                print(f"[*] VALIDATING DATA PAGE {i+1}...")
                 page.goto(f"https://www.google.com/search?q={query.replace(' ', '+')}&tbm=lcl&start={i * 20}")
                 if page.locator("text=CAPTCHA").is_visible() or page.locator("text=unusual traffic").is_visible():
-                    print("[-] CAPTCHA DETECTED.")
-                    if r: r.lpush("bot_responses", "🚨 CAPTCHA DETECTED! Manual takeover required.")
+                    print("[-] SEARCH BLOCKED: CAPTCHA DETECTED.")
+                    if r: r.lpush("swarm_responses", "🚨 CAPTCHA DETECTED! Manual node takeover required.")
                     browser.close()
-                    return leads
+                    return data_points
                 soup = BeautifulSoup(page.content(), "html.parser")
                 for res in soup.find_all("div", class_="VkpGBb"):
-                    name = res.find("div", class_="OSrXXb").text if res.find("div", class_="OSrXXb") else "N/A"
-                    phone = res.find("span", class_="LgQiCc").text if res.find("span", class_="LgQiCc") else "N/A"
-                    leads.append([name, phone])
+                    entity = res.find("div", class_="OSrXXb").text if res.find("div", class_="OSrXXb") else "N/A"
+                    identifier = res.find("span", class_="LgQiCc").text if res.find("span", class_="LgQiCc") else "N/A"
+                    data_points.append([entity, identifier])
             browser.close()
     except Exception as e:
-        print(f"[-] SCRAPING ERROR: {e}")
-    print(f"[+] SCRAPE COMPLETE. FOUND {len(leads)} LEADS.")
-    return leads
+        print(f"[-] NODE ERROR: {e}")
+    print(f"[+] SEARCH COMPLETE. CAPTURED {len(data_points)} DATA POINTS.")
+    return data_points
 
 def swarm_engine():
-    print("[*] SWARM ENGINE THREAD STARTED.")
-    city_idx, ind_idx = 0, 0
+    print("[*] SWARM ENGINE THREAD ACTIVE.")
+    city_idx, cat_idx = 0, 0
     while True:
         try:
             if not r: 
                 time.sleep(5)
                 continue
             
-            if not r.exists("total_leads"): r.set("total_leads", 0)
-            if not r.exists("next_batch"): r.set("next_batch", LEAD_BATCH_SIZE)
+            if not r.exists("total_data_points"): r.set("total_data_points", 0)
+            if not r.exists("next_batch_countdown"): r.set("next_batch_countdown", NODE_BATCH_SIZE)
             
-            cmd = r.rpop("bot_commands")
+            cmd = r.rpop("swarm_commands")
             if cmd:
                 msg = str(cmd).strip()
                 print(f"[*] COMMAND RECEIVED: {msg}")
                 if msg.startswith("/start-swarm"):
                     r.set("swarm_active", "true")
-                    r.lpush("bot_responses", f"🚀 REALITY BRIDGE ACTIVE. Operator: {OPERATOR_NODE_ID[:8]}... Collector: {COLLECTOR_NODE_ID[:8]}...")
-                    print("[+] SWARM ACTIVATED BY COMMAND.")
+                    r.lpush("swarm_responses", f"🚀 REALITY BRIDGE ACTIVE. Operator: {OPERATOR_NODE_ID[:8]}... Collector: {COLLECTOR_NODE_ID[:8]}...")
+                    print("[+] SWARM ACTIVATED.")
 
             if r.get("swarm_active") == "true":
-                city, ind = TOP_50_CITIES[city_idx], INDUSTRIES[ind_idx]
-                real_leads = scrape_real_data_playwright(f"{ind} in {city}", search_depth=3)
+                city, cat = TOP_50_CITIES[city_idx], TARGET_CATEGORIES[cat_idx]
+                verified_data = scrape_real_data_playwright(f"{cat} in {city}", search_depth=3)
                 
-                if real_leads:
-                    count = len(real_leads)
-                    r.incrby("total_leads", count)
-                    r.decrby("next_batch", count)
-                    r.lpush("bot_responses", f"✅ FOUND {count} LEADS in {city} ({ind})")
+                if verified_data:
+                    count = len(verified_data)
+                    r.incrby("total_data_points", count)
+                    r.decrby("next_batch_countdown", count)
+                    r.lpush("swarm_responses", f"✅ VALIDATED {count} DATA POINTS in {city} ({cat})")
 
-                if int(r.get("next_batch")) <= 0:
-                    r.set("next_batch", LEAD_BATCH_SIZE)
-                    r.lpush("bot_responses", f"✅ BATCH FULL: Results handoff to Collector: {COLLECTOR_NODE_ID[:8]}...")
+                if int(r.get("next_batch_countdown")) <= 0:
+                    r.set("next_batch_countdown", NODE_BATCH_SIZE)
+                    r.lpush("swarm_responses", f"✅ BATCH FULL: DATA HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
                     print(f"[+] BATCH COMPLETE. HANDOFF TO {COLLECTOR_NODE_ID}")
                 
-                ind_idx = (ind_idx + 1) % len(INDUSTRIES)
-                if ind_idx == 0: city_idx = (city_idx + 1) % len(TOP_50_CITIES)
+                cat_idx = (cat_idx + 1) % len(TARGET_CATEGORIES)
+                if cat_idx == 0: city_idx = (city_idx + 1) % len(TOP_50_CITIES)
             
             time.sleep(2)
         except Exception as e:
@@ -123,8 +124,8 @@ def health():
 @app.route("/")
 @app.route("/dashboard")
 def index():
-    t = r.get("total_leads") if r else 0
-    n = r.get("next_batch") if r else 1000
+    t = r.get("total_data_points") if r else 0
+    n = r.get("next_batch_countdown") if r else NODE_BATCH_SIZE
     return render_template_string("""
     <!DOCTYPE html><html><head><title>Node Swarm</title><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -136,9 +137,9 @@ def index():
     </style></head><body>
     <h1>NODE-VALIDATOR SWARM</h1>
     <div class="box">
-        TOTAL VALIDATED: <span id="t">{{t}}</span><br>
-        NEXT BATCH IN: <span id="n">{{n}}</span><br>
-        OPERATOR: {{op[:10]}}... | COLLECTOR: {{coll[:10]}}...
+        TOTAL VALIDATED DATA: <span id="t">{{t}}</span><br>
+        NEXT BATCH COUNTDOWN: <span id="n">{{n}}</span><br>
+        OPERATOR NODE: {{op[:10]}}... | COLLECTOR NODE: {{coll[:10]}}...
     </div>
     <div id="chat"></div><br>
     <input id="i" placeholder="/start-swarm..."><button onclick="s()">SEND</button>
@@ -153,16 +154,16 @@ def index():
 def send():
     msg = request.json.get("message")
     if r: 
-        r.lpush("bot_commands", msg)
-        print(f"[*] WEB COMMAND SENT TO REDIS: {msg}")
+        r.lpush("swarm_commands", msg)
+        print(f"[*] NODE COMMAND RECEIVED: {msg}")
     return jsonify({"ok":True})
 
 @app.route("/data")
 def data():
-    if not r: return jsonify({"t":0,"n":1000,"m":[]})
-    return jsonify({"t":r.get("total_leads") or 0,"n":r.get("next_batch") or 1000,"m":r.lrange("bot_responses",0,20)})
+    if not r: return jsonify({"t":0,"n":NODE_BATCH_SIZE,"m":[]})
+    return jsonify({"t":r.get("total_data_points") or 0,"n":r.get("next_batch_countdown") or NODE_BATCH_SIZE,"m":r.lrange("swarm_responses",0,20)})
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
-    print(f"[*] STARTING FLASK ON PORT {port}")
+    print(f"[*] STARTING NODE ON PORT {port}")
     app.run(host="0.0.0.0", port=port)
