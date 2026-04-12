@@ -34,39 +34,56 @@ TOP_50_CITIES = [
 ]
 TARGET_CATEGORIES = ["Roofers", "Plumbers", "HVAC"]
 
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/109.0'
+]
+
 def scrape_real_data_http(query, search_depth=3):
     data_points = []
     print(f"[*] OPERATOR NODE STARTING HTTP SEARCH: {query}")
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
     try:
         for i in range(search_depth):
             print(f"[*] VALIDATING DATA PAGE {i+1}...")
-            url = f"https://www.google.com/search?q={query.replace(' ', '+')}&tbm=lcl&start={i * 20}"
-            response = requests.get(url, headers=headers, timeout=10)
-            
-            # Fallback to simulated data if blocked
-            if response.status_code != 200 or "CAPTCHA" in response.text or "unusual traffic" in response.text:
-                print("[-] SEARCH BLOCKED OR FAILED. TRIGGERING SIMULATED DATA MODE.")
-                sim_count = random.randint(5, 15)
-                for _ in range(sim_count):
-                    data_points.append([f"Simulated {random.choice(TARGET_CATEGORIES)} Co.", f"({random.randint(200,999)}) 555-{random.randint(1000,9999)}"])
-                return data_points
-
+            headers = {
+                'User-Agent': random.choice(USER_AGENTS)
+            }
+            url = f"https://www.google.com/search?q={query.replace(" ", "+")}&tbm=lcl&start={i * 20}"
+            response = requests.get(url, headers=headers, timeout=15) # Increased timeout
+            response.raise_for_status() # Raise an exception for HTTP errors
             soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Check for CAPTCHA or unusual traffic
+            if "CAPTCHA" in response.text or "unusual traffic" in response.text:
+                print("[-] SEARCH BLOCKED: CAPTCHA DETECTED. RETRYING WITH NEW USER-AGENT.")
+                bridge_state["swarm_responses"].insert(0, "🚨 CAPTCHA DETECTED! Retrying with new User-Agent.")
+                time.sleep(random.randint(5, 10)) # Longer sleep on block
+                continue # Retry current page with new user agent
+
             for res in soup.find_all("div", class_="VkpGBb"):
                 entity = res.find("div", class_="OSrXXb").text if res.find("div", class_="OSrXXb") else "N/A"
                 identifier = res.find("span", class_="LgQiCc").text if res.find("span", class_="LgQiCc") else "N/A"
-                data_points.append([entity, identifier])
+                if entity != "N/A" and identifier != "N/A": # Only add if both are found
+                    data_points.append([entity, identifier])
 
+            time.sleep(random.randint(2, 5)) # Random sleep between pages
+
+    except requests.exceptions.RequestException as e:
+        print(f"[-] HTTP REQUEST ERROR: {e}")
+        bridge_state["swarm_responses"].insert(0, f"❌ HTTP ERROR: {e}")
     except Exception as e:
-        print(f"[-] NODE ERROR: {e}. FALLING BACK TO SIMULATED DATA.")
-        sim_count = random.randint(5, 15)
-        for _ in range(sim_count):
-            data_points.append([f"Simulated {random.choice(TARGET_CATEGORIES)} Co.", f"({random.randint(200,999)}) 555-{random.randint(1000,9999)}"])
+        print(f"[-] NODE ERROR: {e}")
+        bridge_state["swarm_responses"].insert(0, f"❌ NODE ERROR: {e}")
             
-    print(f"[+] SEARCH COMPLETE. CAPTURED {len(data_points)} DATA POINTS.")
+    print(f"[+] HTTP SEARCH COMPLETE. CAPTURED {len(data_points)} REAL DATA POINTS.")
     return data_points
 
 def swarm_engine():
@@ -88,9 +105,9 @@ def swarm_engine():
                     count = len(verified_data)
                     bridge_state["total_data_points"] += count
                     bridge_state["next_batch_countdown"] -= count
-                    bridge_state["swarm_responses"].insert(0, f"✅ VALIDATED {count} DATA POINTS in {city} ({cat})")
+                    bridge_state["swarm_responses"].insert(0, f"✅ VALIDATED {count} REAL DATA POINTS in {city} ({cat})")
                     if count > 0:
-                        bridge_state["swarm_responses"].insert(0, f"📍 FIRST REAL LEAD: {verified_data[0][0]} | {verified_data[0][1]}")
+                        bridge_state["swarm_responses"].insert(0, f"📍 REAL-WORLD VALIDATION: {verified_data[0][0]} | {verified_data[0][1]}")
 
                 if bridge_state["next_batch_countdown"] <= 0:
                     bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
@@ -99,10 +116,11 @@ def swarm_engine():
                 cat_idx = (cat_idx + 1) % len(TARGET_CATEGORIES)
                 if cat_idx == 0: city_idx = (city_idx + 1) % len(TOP_50_CITIES)
             
-            time.sleep(5) # Slow down to avoid immediate blocks
+            time.sleep(random.randint(10, 20)) # Longer random sleep between full cycles
         except Exception as e:
             print(f"[-] ENGINE ERROR: {e}")
-            time.sleep(5)
+            bridge_state["swarm_responses"].insert(0, f"❌ ENGINE CRASH: {e}")
+            time.sleep(15)
 
 threading.Thread(target=swarm_engine, daemon=True).start()
 
