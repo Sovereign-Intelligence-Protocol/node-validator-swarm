@@ -12,8 +12,6 @@ except ImportError:
 app = Flask(__name__)
 
 # --- Reality Bridge Configuration ---
-# OPERATOR_NODE_ID fuels the swarm's search logic
-# COLLECTOR_NODE_ID is the only authorized destination for data handoff
 OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -37,12 +35,6 @@ TOP_50_CITIES = [
     "Minneapolis, MN", "Bakersfield, CA", "Tulsa, OK", "Tampa, FL", "Arlington, TX"
 ]
 INDUSTRIES = ["Roofers", "Plumbers", "HVAC"]
-
-def get_gofile_server():
-    try:
-        resp = requests.get("https://api.gofile.io/servers")
-        return resp.json()["data"]["servers"][0]["name"]
-    except: return "store1"
 
 def scrape_real_data_playwright(query, search_depth=3):
     leads = []
@@ -104,7 +96,12 @@ def swarm_engine():
 
 threading.Thread(target=swarm_engine, daemon=True).start()
 
+# --- Healthcheck Bypass ---
 @app.route("/")
+def health_bypass():
+    return "NODE ACTIVE"
+
+@app.route("/dashboard")
 def index():
     t, n = (r.get("total_leads") or 0, r.get("next_batch") or 1000) if r else (0, 1000)
     return render_template_string("""
@@ -126,7 +123,7 @@ def index():
     <input id="i" placeholder="/start-swarm..."><button onclick="s()">SEND</button>
     <script>
         async function s(){const i=document.getElementById("i"); await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})}); i.value="";}
-        async function u(){const r=await fetch("/data"); const d=await r.json(); document.getElementById("t").innerText=d.t; document.getElementById("n").innerText=d.n; document.getElementById("data_node_id_addr").innerText=d.data_node_id; document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");}
+        async function u(){const r=await fetch("/data"); const d=await r.json(); document.getElementById("t").innerText=d.t; document.getElementById("n").innerText=d.n; document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");}
         setInterval(u, 3000);
     </script></body></html>
     """, t=t, n=n, op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID))
@@ -146,4 +143,5 @@ def health():
     return "OK", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    # Force listen on 0.0.0.0 and Port 5000 for Railway
+    app.run(host="0.0.0.0", port=5000)
