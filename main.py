@@ -11,7 +11,10 @@ except ImportError:
 
 app = Flask(__name__)
 
-# --- Reality Bridge Configuration ---
+# --- Reality Bridge Configuration (Environment Variables) ---
+# OPERATOR_NODE_ID fuels the swarm's search logic
+# COLLECTOR_NODE_ID is the only authorized destination for data handoff
+# These are PULLED from the environment to ensure they are NOT hardcoded.
 OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -96,11 +99,13 @@ def swarm_engine():
 
 threading.Thread(target=swarm_engine, daemon=True).start()
 
-# --- Healthcheck Bypass ---
-@app.route("/")
-def health_bypass():
-    return "NODE ACTIVE"
+# --- Health Route ---
+@app.route("/health")
+def health():
+    return "200 OK", 200
 
+# --- Dashboard ---
+@app.route("/")
 @app.route("/dashboard")
 def index():
     t, n = (r.get("total_leads") or 0, r.get("next_batch") or 1000) if r else (0, 1000)
@@ -138,10 +143,8 @@ def data():
     if not r: return jsonify({"t":0,"n":0,"m":[]})
     return jsonify({"t":r.get("total_leads") or 0,"n":r.get("next_batch") or 1000,"m":r.lrange("bot_responses",0,20)})
 
-@app.route("/health")
-def health():
-    return "OK", 200
-
 if __name__ == "__main__":
-    # Force listen on 0.0.0.0 and Port 5000 for Railway
-    app.run(host="0.0.0.0", port=5000)
+    # --- Dynamic Port Bridge ---
+    # Pulling PORT from environment (Railway default) and binding to 0.0.0.0
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host="0.0.0.0", port=port)

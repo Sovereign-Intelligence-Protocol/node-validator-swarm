@@ -5,7 +5,7 @@
   },
   "deploy": {
     "startCommand": "/opt/venv/bin/python main.py",
-    "healthcheckPath": "/",
+    "healthcheckPath": "/health",
     "healthcheckTimeout": 100,
     "restartPolicy": "ON_FAILURE"
   }
