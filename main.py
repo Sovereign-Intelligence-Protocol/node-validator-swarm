@@ -1,13 +1,7 @@
 from flask import Flask, render_template_string, request, jsonify
 import os, threading, time, json, re, random, csv
-from playwright.sync_api import sync_playwright
-
-# --- Safety imports ---
-try:
-    import requests
-    from bs4 import BeautifulSoup
-except ImportError:
-    requests, BeautifulSoup = None, None
+import requests
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
@@ -40,30 +34,36 @@ TOP_50_CITIES = [
 ]
 TARGET_CATEGORIES = ["Roofers", "Plumbers", "HVAC"]
 
-def scrape_real_data_playwright(query, search_depth=3):
+def scrape_real_data_http(query, search_depth=3):
     data_points = []
-    print(f"[*] OPERATOR NODE STARTING SEARCH: {query}")
+    print(f"[*] OPERATOR NODE STARTING HTTP SEARCH: {query}")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            for i in range(search_depth):
-                print(f"[*] VALIDATING DATA PAGE {i+1}...")
-                page.goto(f"https://www.google.com/search?q={query.replace(' ', '+')}&tbm=lcl&start={i * 20}")
-                if page.locator("text=CAPTCHA").is_visible() or page.locator("text=unusual traffic").is_visible():
-                    print("[-] SEARCH BLOCKED: CAPTCHA DETECTED.")
-                    bridge_state["swarm_responses"].insert(0, "🚨 CAPTCHA DETECTED! Manual node takeover required.")
-                    browser.close()
-                    return data_points
-                soup = BeautifulSoup(page.content(), "html.parser")
-                for res in soup.find_all("div", class_="VkpGBb"):
-                    entity = res.find("div", class_="OSrXXb").text if res.find("div", class_="OSrXXb") else "N/A"
-                    identifier = res.find("span", class_="LgQiCc").text if res.find("span", class_="LgQiCc") else "N/A"
-                    data_points.append([entity, identifier])
-            browser.close()
+        for i in range(search_depth):
+            print(f"[*] VALIDATING DATA PAGE {i+1}...")
+            url = f"https://www.google.com/search?q={query.replace(' ', '+')}&tbm=lcl&start={i * 20}"
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status() # Raise an exception for HTTP errors
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Check for CAPTCHA or unusual traffic
+            if "CAPTCHA" in response.text or "unusual traffic" in response.text:
+                print("[-] SEARCH BLOCKED: CAPTCHA DETECTED.")
+                bridge_state["swarm_responses"].insert(0, "🚨 CAPTCHA DETECTED! Manual node takeover required.")
+                return data_points
+
+            for res in soup.find_all("div", class_="VkpGBb"):
+                entity = res.find("div", class_="OSrXXb").text if res.find("div", class_="OSrXXb") else "N/A"
+                identifier = res.find("span", class_="LgQiCc").text if res.find("span", class_="LgQiCc") else "N/A"
+                data_points.append([entity, identifier])
+
+    except requests.exceptions.RequestException as e:
+        print(f"[-] HTTP REQUEST ERROR: {e}")
     except Exception as e:
         print(f"[-] NODE ERROR: {e}")
-    print(f"[+] SEARCH COMPLETE. CAPTURED {len(data_points)} DATA POINTS.")
+    print(f"[+] HTTP SEARCH COMPLETE. CAPTURED {len(data_points)} DATA POINTS.")
     return data_points
 
 def swarm_engine():
@@ -79,7 +79,7 @@ def swarm_engine():
 
             if bridge_state["swarm_active"]:
                 city, cat = TOP_50_CITIES[city_idx], TARGET_CATEGORIES[cat_idx]
-                verified_data = scrape_real_data_playwright(f"{cat} in {city}", search_depth=3)
+                verified_data = scrape_real_data_http(f"{cat} in {city}", search_depth=3)
                 
                 if verified_data:
                     count = len(verified_data)
@@ -145,5 +145,5 @@ def data():
     return jsonify({"t":bridge_state["total_data_points"],"n":bridge_state["next_batch_countdown"],"m":bridge_state["swarm_responses"][:20]})
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
