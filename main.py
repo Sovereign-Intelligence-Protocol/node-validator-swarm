@@ -12,9 +12,6 @@ except ImportError:
 app = Flask(__name__)
 
 # --- Reality Bridge Configuration (Environment Variables) ---
-# OPERATOR_NODE_ID fuels the swarm's search logic
-# COLLECTOR_NODE_ID is the only authorized destination for data handoff
-# These are PULLED from the environment to ensure they are NOT hardcoded.
 OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -131,7 +128,7 @@ def index():
         async function u(){const r=await fetch("/data"); const d=await r.json(); document.getElementById("t").innerText=d.t; document.getElementById("n").innerText=d.n; document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");}
         setInterval(u, 3000);
     </script></body></html>
-    """, t=t, n=n, op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID))
+    """, t=t, n=n, op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
 
 @app.route("/send", methods=["POST"])
 def send():
@@ -144,7 +141,5 @@ def data():
     return jsonify({"t":r.get("total_leads") or 0,"n":r.get("next_batch") or 1000,"m":r.lrange("bot_responses",0,20)})
 
 if __name__ == "__main__":
-    # --- Dynamic Port Bridge ---
-    # Pulling PORT from environment (Railway default) and binding to 0.0.0.0
     port = int(os.environ.get('PORT', 5000))
     app.run(host="0.0.0.0", port=port)
