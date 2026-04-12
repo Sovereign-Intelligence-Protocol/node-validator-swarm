@@ -11,9 +11,9 @@ except ImportError:
 
 app = Flask(__name__)
 
-# --- Reality Bridge: Pull IDs from Environment Variables ---
-# OPERATOR_NODE_ID acts as the "Fuel" (fueling the operation speed/budget)
-# COLLECTOR_NODE_ID acts as the "Results" destination
+# --- Reality Bridge Configuration ---
+# OPERATOR_NODE_ID fuels the swarm's search logic
+# COLLECTOR_NODE_ID is the only authorized destination for data handoff
 OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -81,12 +81,7 @@ def swarm_engine():
                 msg = str(cmd).strip()
                 if msg.startswith("/start-swarm"):
                     r.set("swarm_active", "true")
-                    r.lpush("bot_responses", f"🚀 REALITY BRIDGE ACTIVE. Fuel: {OPERATOR_NODE_ID[:8]}... Collector: {COLLECTOR_NODE_ID[:8]}...")
-                elif msg.startswith("/set-operator"):
-                    parts = msg.split(" ")
-                    if len(parts) > 1:
-                        r.set("operator_node_id", parts[1])
-                        r.lpush("bot_responses", f"✅ Operator Node updated: {parts[1]}")
+                    r.lpush("bot_responses", f"🚀 REALITY BRIDGE ACTIVE. Operator: {OPERATOR_NODE_ID[:8]}... Collector: {COLLECTOR_NODE_ID[:8]}...")
 
             if r.get("swarm_active") == "true":
                 city, ind = TOP_50_CITIES[city_idx], INDUSTRIES[ind_idx]
@@ -99,12 +94,11 @@ def swarm_engine():
 
                 if int(r.get("next_batch")) <= 0:
                     r.set("next_batch", LEAD_BATCH_SIZE)
-                    r.lpush("bot_responses", f"✅ BATCH FULL: Delivering results to Collector: {COLLECTOR_NODE_ID[:8]}...")
+                    r.lpush("bot_responses", f"✅ BATCH FULL: Results handoff to Collector: {COLLECTOR_NODE_ID[:8]}...")
                 
                 ind_idx = (ind_idx + 1) % len(INDUSTRIES)
                 if ind_idx == 0: city_idx = (city_idx + 1) % len(TOP_50_CITIES)
             
-            # Dynamic scaling: faster rotation if Operator Node is fueling the bridge
             time.sleep(2 if OPERATOR_NODE_ID else 5)
         except: time.sleep(5)
 
@@ -146,6 +140,10 @@ def send():
 def data():
     if not r: return jsonify({"t":0,"n":0,"m":[]})
     return jsonify({"t":r.get("total_leads") or 0,"n":r.get("next_batch") or 1000,"m":r.lrange("bot_responses",0,20)})
+
+@app.route("/health")
+def health():
+    return "OK", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
