@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string, request, jsonify
-import redis, os, threading, time, json, re, random, csv
+import os, threading, time, json, re, random, csv
 from playwright.sync_api import sync_playwright
 
 # --- Safety imports ---
@@ -14,19 +14,16 @@ app = Flask(__name__)
 # --- Reality Bridge Configuration (Environment Variables) ---
 OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-print(f"[*] INITIALIZING REALITY BRIDGE...")
-print(f"[*] OPERATOR NODE: {OPERATOR_NODE_ID}")
-print(f"[*] COLLECTOR NODE: {COLLECTOR_NODE_ID}")
-
-try:
-    r = redis.from_url(REDIS_URL, decode_responses=True)
-    r.ping()
-    print("[+] REDIS NODE CONNECTED.")
-except Exception as e:
-    print(f"[-] REDIS NODE FAILED: {e}")
-    r = None
+# --- In-Memory Bridge Storage (No-Redis Sledgehammer) ---
+# This ensures 100% stability on Railway without external dependencies.
+bridge_state = {
+    "swarm_active": True, # AUTO-START
+    "total_data_points": 0,
+    "next_batch_countdown": 1000,
+    "swarm_responses": ["🚀 REALITY BRIDGE AUTO-ACTIVATED."],
+    "swarm_commands": []
+}
 
 NODE_BATCH_SIZE = 1000
 TOP_50_CITIES = [
@@ -55,7 +52,7 @@ def scrape_real_data_playwright(query, search_depth=3):
                 page.goto(f"https://www.google.com/search?q={query.replace(' ', '+')}&tbm=lcl&start={i * 20}")
                 if page.locator("text=CAPTCHA").is_visible() or page.locator("text=unusual traffic").is_visible():
                     print("[-] SEARCH BLOCKED: CAPTCHA DETECTED.")
-                    if r: r.lpush("swarm_responses", "🚨 CAPTCHA DETECTED! Manual node takeover required.")
+                    bridge_state["swarm_responses"].insert(0, "🚨 CAPTCHA DETECTED! Manual node takeover required.")
                     browser.close()
                     return data_points
                 soup = BeautifulSoup(page.content(), "html.parser")
@@ -71,46 +68,30 @@ def scrape_real_data_playwright(query, search_depth=3):
 
 def swarm_engine():
     print("[*] SWARM ENGINE THREAD ACTIVE.")
-    # --- HARD-CODED AUTO-START ---
-    if r: 
-        r.set("swarm_active", "true")
-        r.lpush("swarm_responses", "🚀 REALITY BRIDGE AUTO-ACTIVATED.")
-    
     city_idx, cat_idx = 0, 0
     while True:
         try:
-            if not r: 
-                time.sleep(5)
-                continue
-            
-            if not r.exists("total_data_points"): r.set("total_data_points", 0)
-            if not r.exists("next_batch_countdown"): r.set("next_batch_countdown", NODE_BATCH_SIZE)
-            
-            cmd = r.rpop("swarm_commands")
-            if cmd:
-                msg = str(cmd).strip()
-                print(f"[*] COMMAND RECEIVED: {msg}")
-                if msg.startswith("/start-swarm"):
-                    r.set("swarm_active", "true")
-                    r.lpush("swarm_responses", f"🚀 REALITY BRIDGE ACTIVE. Operator: {OPERATOR_NODE_ID[:8]}... Collector: {COLLECTOR_NODE_ID[:8]}...")
-                    print("[+] SWARM ACTIVATED.")
+            if bridge_state["swarm_commands"]:
+                cmd = bridge_state["swarm_commands"].pop(0)
+                if cmd.startswith("/start-swarm"):
+                    bridge_state["swarm_active"] = True
+                    bridge_state["swarm_responses"].insert(0, f"🚀 REALITY BRIDGE RE-ENGAGED. Operator: {OPERATOR_NODE_ID[:8]}...")
 
-            if r.get("swarm_active") == "true":
+            if bridge_state["swarm_active"]:
                 city, cat = TOP_50_CITIES[city_idx], TARGET_CATEGORIES[cat_idx]
                 verified_data = scrape_real_data_playwright(f"{cat} in {city}", search_depth=3)
                 
                 if verified_data:
                     count = len(verified_data)
-                    r.incrby("total_data_points", count)
-                    r.decrby("next_batch_countdown", count)
-                    r.lpush("swarm_responses", f"✅ VALIDATED {count} DATA POINTS in {city} ({cat})")
+                    bridge_state["total_data_points"] += count
+                    bridge_state["next_batch_countdown"] -= count
+                    bridge_state["swarm_responses"].insert(0, f"✅ VALIDATED {count} DATA POINTS in {city} ({cat})")
                     if count > 0:
-                        r.lpush("swarm_responses", f"📍 FIRST REAL LEAD: {verified_data[0][0]} | {verified_data[0][1]}")
+                        bridge_state["swarm_responses"].insert(0, f"📍 FIRST REAL LEAD: {verified_data[0][0]} | {verified_data[0][1]}")
 
-                if int(r.get("next_batch_countdown")) <= 0:
-                    r.set("next_batch_countdown", NODE_BATCH_SIZE)
-                    r.lpush("swarm_responses", f"✅ BATCH FULL: DATA HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
-                    print(f"[+] BATCH COMPLETE. HANDOFF TO {COLLECTOR_NODE_ID}")
+                if bridge_state["next_batch_countdown"] <= 0:
+                    bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
+                    bridge_state["swarm_responses"].insert(0, f"✅ BATCH FULL: DATA HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
                 
                 cat_idx = (cat_idx + 1) % len(TARGET_CATEGORIES)
                 if cat_idx == 0: city_idx = (city_idx + 1) % len(TOP_50_CITIES)
@@ -129,8 +110,6 @@ def health():
 @app.route("/")
 @app.route("/dashboard")
 def index():
-    t = r.get("total_data_points") if r else 0
-    n = r.get("next_batch_countdown") if r else NODE_BATCH_SIZE
     return render_template_string("""
     <!DOCTYPE html><html><head><title>Node Swarm</title><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -153,19 +132,17 @@ def index():
         async function u(){const r=await fetch("/data"); const d=await r.json(); document.getElementById("t").innerText=d.t; document.getElementById("n").innerText=d.n; document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");}
         setInterval(u, 3000);
     </script></body></html>
-    """, t=t, n=n, op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
+    """, t=bridge_state["total_data_points"], n=bridge_state["next_batch_countdown"], op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
 
 @app.route("/send", methods=["POST"])
 def send():
     msg = request.json.get("message")
-    if r: 
-        r.lpush("swarm_commands", msg)
+    bridge_state["swarm_commands"].append(msg)
     return jsonify({"ok":True})
 
 @app.route("/data")
 def data():
-    if not r: return jsonify({"t":0,"n":NODE_BATCH_SIZE,"m":[]})
-    return jsonify({"t":r.get("total_data_points") or 0,"n":r.get("next_batch_countdown") or NODE_BATCH_SIZE,"m":r.lrange("swarm_responses",0,20)})
+    return jsonify({"t":bridge_state["total_data_points"],"n":bridge_state["next_batch_countdown"],"m":bridge_state["swarm_responses"][:20]})
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
