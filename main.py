@@ -10,29 +10,23 @@ OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZx
 COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
 
 # --- In-Memory Bridge Storage (No-Redis Sledgehammer) ---
-# This ensures 100% stability on Railway without external dependencies.
 bridge_state = {
     "swarm_active": True, # AUTO-START
     "total_data_points": 0,
     "next_batch_countdown": 1000,
-    "swarm_responses": ["🚀 REALITY BRIDGE AUTO-ACTIVATED."],
+    "swarm_responses": ["🚀 HIGH-VELOCITY SNIPER MODE AUTO-ACTIVATED."],
     "swarm_commands": []
 }
 
 NODE_BATCH_SIZE = 1000
-TOP_50_CITIES = [
-    "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX", "Phoenix, AZ",
-    "Philadelphia, PA", "San Antonio, TX", "San Diego, CA", "Dallas, TX", "Jacksonville, FL",
-    "Fort Worth, TX", "San Jose, CA", "Austin, TX", "Charlotte, NC", "Columbus, OH",
-    "Indianapolis, IN", "San Francisco, CA", "Seattle, WA", "Denver, CO", "Oklahoma City, OK",
-    "Nashville, TN", "Washington, D.C.", "El Paso, TX", "Las Vegas, NV", "Boston, MA",
-    "Detroit, MI", "Louisville, KY", "Portland, OR", "Memphis, TN", "Baltimore, MD",
-    "Milwaukee, WI", "Albuquerque, NM", "Tucson, AZ", "Fresno, CA", "Sacramento, CA",
-    "Atlanta, GA", "Mesa, AZ", "Kansas City, MO", "Raleigh, NC", "Colorado Springs, CO",
-    "Omaha, NE", "Miami, FL", "Virginia Beach, VA", "Long Beach, CA", "Oakland, CA",
-    "Minneapolis, MN", "Bakersfield, CA", "Tulsa, OK", "Tampa, FL", "Arlington, TX"
+
+# --- High-Velocity Sniper Targets ---
+SNIPER_TARGETS = [
+    "live network signal", "new node deployment", "validator node status",
+    "blockchain node active", "network telemetry data", "node synchronization status",
+    "decentralized network ping", "validator consensus signal", "node latency report",
+    "peer-to-peer network discovery"
 ]
-TARGET_CATEGORIES = ["Roofers", "Plumbers", "HVAC"]
 
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
@@ -40,87 +34,95 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0',
     'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/109.0'
 ]
 
-def scrape_real_data_http(query, search_depth=3):
+def scrape_sniper_signals(query, search_depth=3):
     data_points = []
-    print(f"[*] OPERATOR NODE STARTING HTTP SEARCH: {query}")
+    print(f"[*] SNIPER NODE HUNTING: {query}")
     try:
         for i in range(search_depth):
-            print(f"[*] VALIDATING DATA PAGE {i+1}...")
             headers = {
                 'User-Agent': random.choice(USER_AGENTS)
             }
-            url = f"https://www.google.com/search?q={query.replace(" ", "+")}&tbm=lcl&start={i * 20}"
-            response = requests.get(url, headers=headers, timeout=15) # Increased timeout
-            response.raise_for_status() # Raise an exception for HTTP errors
+            # Using DuckDuckGo for faster, less restricted signal scraping
+            url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}&s={i * 30}"
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
             soup = BeautifulSoup(response.text, "html.parser")
             
-            # Check for CAPTCHA or unusual traffic
-            if "CAPTCHA" in response.text or "unusual traffic" in response.text:
-                print("[-] SEARCH BLOCKED: CAPTCHA DETECTED. RETRYING WITH NEW USER-AGENT.")
-                bridge_state["swarm_responses"].insert(0, "🚨 CAPTCHA DETECTED! Retrying with new User-Agent.")
-                time.sleep(random.randint(5, 10)) # Longer sleep on block
-                continue # Retry current page with new user agent
+            for res in soup.find_all("div", class_="result"):
+                title_elem = res.find("a", class_="result__url")
+                snippet_elem = res.find("a", class_="result__snippet")
+                
+                if title_elem and snippet_elem:
+                    signal_source = title_elem.get('href', 'N/A')
+                    signal_data = snippet_elem.text.strip()
+                    
+                    # Filter for actual signal-like data (contains numbers, IPs, or specific keywords)
+                    if any(char.isdigit() for char in signal_data) or "node" in signal_data.lower() or "network" in signal_data.lower():
+                        # Clean up the source URL
+                        if signal_source.startswith('//duckduckgo.com/l/?uddg='):
+                            signal_source = signal_source.split('uddg=')[1].split('&')[0]
+                            import urllib.parse
+                            signal_source = urllib.parse.unquote(signal_source)
+                            
+                        data_points.append([signal_source[:50] + "...", signal_data[:100] + "..."])
 
-            for res in soup.find_all("div", class_="VkpGBb"):
-                entity = res.find("div", class_="OSrXXb").text if res.find("div", class_="OSrXXb") else "N/A"
-                identifier = res.find("span", class_="LgQiCc").text if res.find("span", class_="LgQiCc") else "N/A"
-                if entity != "N/A" and identifier != "N/A": # Only add if both are found
-                    data_points.append([entity, identifier])
-
-            time.sleep(random.randint(2, 5)) # Random sleep between pages
+            # Maximum Frequency: Minimal sleep between pages
+            time.sleep(random.uniform(0.5, 1.5))
 
     except requests.exceptions.RequestException as e:
-        print(f"[-] HTTP REQUEST ERROR: {e}")
-        bridge_state["swarm_responses"].insert(0, f"❌ HTTP ERROR: {e}")
+        print(f"[-] SNIPER HTTP ERROR: {e}")
     except Exception as e:
-        print(f"[-] NODE ERROR: {e}")
-        bridge_state["swarm_responses"].insert(0, f"❌ NODE ERROR: {e}")
+        print(f"[-] SNIPER NODE ERROR: {e}")
             
-    print(f"[+] HTTP SEARCH COMPLETE. CAPTURED {len(data_points)} REAL DATA POINTS.")
+    print(f"[+] SNIPER HUNT COMPLETE. CAPTURED {len(data_points)} LIVE SIGNALS.")
     return data_points
 
 def swarm_engine():
-    print("[*] SWARM ENGINE THREAD ACTIVE.")
-    city_idx, cat_idx = 0, 0
+    print("[*] HIGH-VELOCITY SNIPER LOOP ACTIVE.")
+    target_idx = 0
     while True:
         try:
             if bridge_state["swarm_commands"]:
                 cmd = bridge_state["swarm_commands"].pop(0)
                 if cmd.startswith("/start-swarm"):
                     bridge_state["swarm_active"] = True
-                    bridge_state["swarm_responses"].insert(0, f"🚀 REALITY BRIDGE RE-ENGAGED. Operator: {OPERATOR_NODE_ID[:8]}...")
+                    bridge_state["swarm_responses"].insert(0, f"🎯 SNIPER LOOP RE-ENGAGED. Operator: {OPERATOR_NODE_ID[:8]}...")
 
             if bridge_state["swarm_active"]:
-                city, cat = TOP_50_CITIES[city_idx], TARGET_CATEGORIES[cat_idx]
-                verified_data = scrape_real_data_http(f"{cat} in {city}", search_depth=3)
+                target = SNIPER_TARGETS[target_idx]
+                # Add a random timestamp or identifier to ensure fresh results
+                dynamic_query = f'"{target}" "{time.strftime("%Y-%m-%d")}"'
+                
+                verified_data = scrape_sniper_signals(dynamic_query, search_depth=3)
                 
                 if verified_data:
                     count = len(verified_data)
                     bridge_state["total_data_points"] += count
                     bridge_state["next_batch_countdown"] -= count
-                    bridge_state["swarm_responses"].insert(0, f"✅ VALIDATED {count} REAL DATA POINTS in {city} ({cat})")
+                    bridge_state["swarm_responses"].insert(0, f"⚡ CAPTURED {count} LIVE SIGNALS: [{target.upper()}]")
+                    
                     if count > 0:
-                        bridge_state["swarm_responses"].insert(0, f"📍 REAL-WORLD VALIDATION: {verified_data[0][0]} | {verified_data[0][1]}")
+                        # Report the first live signal found in this batch
+                        bridge_state["swarm_responses"].insert(0, f"📡 LIVE SIGNAL: {verified_data[0][0]} | {verified_data[0][1]}")
 
                 if bridge_state["next_batch_countdown"] <= 0:
                     bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
-                    bridge_state["swarm_responses"].insert(0, f"✅ BATCH FULL: DATA HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
+                    bridge_state["swarm_responses"].insert(0, f"✅ BATCH FULL: SIGNAL HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
                 
-                cat_idx = (cat_idx + 1) % len(TARGET_CATEGORIES)
-                if cat_idx == 0: city_idx = (city_idx + 1) % len(TOP_50_CITIES)
+                target_idx = (target_idx + 1) % len(SNIPER_TARGETS)
             
-            time.sleep(random.randint(10, 20)) # Longer random sleep between full cycles
+            # Maximum Frequency: Minimal sleep between full target cycles
+            time.sleep(random.uniform(2.0, 4.0))
+            
         except Exception as e:
-            print(f"[-] ENGINE ERROR: {e}")
-            bridge_state["swarm_responses"].insert(0, f"❌ ENGINE CRASH: {e}")
-            time.sleep(15)
+            print(f"[-] SNIPER LOOP CRASH: {e}")
+            bridge_state["swarm_responses"].insert(0, f"❌ SNIPER CRASH: {e}")
+            time.sleep(5)
 
 threading.Thread(target=swarm_engine, daemon=True).start()
 
@@ -132,17 +134,19 @@ def health():
 @app.route("/dashboard")
 def index():
     return render_template_string("""
-    <!DOCTYPE html><html><head><title>Node Swarm</title><meta name="viewport" content="width=device-width, initial-scale=1">
+    <!DOCTYPE html><html><head><title>Sniper Swarm</title><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { background: #000; color: #00f2fe; font-family: monospace; text-align: center; padding: 20px; }
-        .box { border: 1px solid #00f2fe; padding: 20px; margin: 20px; box-shadow: 0 0 15px #00f2fe; }
-        #chat { height: 350px; overflow-y: auto; background: #111; text-align: left; padding: 10px; border: 1px solid #333; font-size: 12px; }
-        input { width: 60%; padding: 12px; background: #000; border: 1px solid #00f2fe; color: #fff; }
-        button { padding: 12px; background: #00f2fe; color: #000; border: none; font-weight: bold; }
+        body { background: #000; color: #00ff00; font-family: monospace; text-align: center; padding: 20px; }
+        .box { border: 1px solid #00ff00; padding: 20px; margin: 20px; box-shadow: 0 0 15px #00ff00; }
+        #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #003300; font-size: 12px; }
+        input { width: 60%; padding: 12px; background: #000; border: 1px solid #00ff00; color: #fff; }
+        button { padding: 12px; background: #00ff00; color: #000; border: none; font-weight: bold; }
+        .signal { color: #ff00ff; }
+        .alert { color: #ff0000; }
     </style></head><body>
-    <h1>NODE-VALIDATOR SWARM</h1>
+    <h1>HIGH-VELOCITY SNIPER SWARM</h1>
     <div class="box">
-        TOTAL VALIDATED DATA: <span id="t">{{t}}</span><br>
+        TOTAL SIGNALS CAPTURED: <span id="t">{{t}}</span><br>
         NEXT BATCH COUNTDOWN: <span id="n">{{n}}</span><br>
         OPERATOR NODE: {{op[:10]}}... | COLLECTOR NODE: {{coll[:10]}}...
     </div>
@@ -150,8 +154,18 @@ def index():
     <input id="i" placeholder="/start-swarm..."><button onclick="s()">SEND</button>
     <script>
         async function s(){const i=document.getElementById("i"); await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})}); i.value="";}
-        async function u(){const r=await fetch("/data"); const d=await r.json(); document.getElementById("t").innerText=d.t; document.getElementById("n").innerText=d.n; document.getElementById("chat").innerHTML=d.m.map(x=>`<div>${x}</div>`).join("");}
-        setInterval(u, 3000);
+        async function u(){
+            const r=await fetch("/data"); 
+            const d=await r.json(); 
+            document.getElementById("t").innerText=d.t; 
+            document.getElementById("n").innerText=d.n; 
+            document.getElementById("chat").innerHTML=d.m.map(x=>{
+                if(x.includes("LIVE SIGNAL")) return `<div class="signal">${x}</div>`;
+                if(x.includes("CRASH") || x.includes("ERROR")) return `<div class="alert">${x}</div>`;
+                return `<div>${x}</div>`;
+            }).join("");
+        }
+        setInterval(u, 2000); // Faster UI updates for Sniper Mode
     </script></body></html>
     """, t=bridge_state["total_data_points"], n=bridge_state["next_batch_countdown"], op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
 
@@ -163,7 +177,7 @@ def send():
 
 @app.route("/data")
 def data():
-    return jsonify({"t":bridge_state["total_data_points"],"n":bridge_state["next_batch_countdown"],"m":bridge_state["swarm_responses"][:20]})
+    return jsonify({"t":bridge_state["total_data_points"],"n":bridge_state["next_batch_countdown"],"m":bridge_state["swarm_responses"][:30]})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
