@@ -25,13 +25,23 @@ SNIPER_TARGETS = [
     "p2p network discovery", "network telemetry report", "consensus signal active"
 ]
 
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+]
+
 def scrape_sniper_signals(query):
     data_points = []
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+            'User-Agent': random.choice(USER_AGENTS),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
-        # Using DuckDuckGo HTML for high-reliability scraping
         url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
@@ -71,7 +81,7 @@ def swarm_engine():
                         bridge_state["swarm_responses"].insert(0, f"⚡ CRITICAL VALIDATION: {signal_source} | {signal_data}")
                         if bridge_state["next_batch_countdown"] <= 0:
                             bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
-                            bridge_state["swarm_responses"].insert(0, f"✅ BATCH FULL: HANDOFF TO COLLECTOR.")
+                            bridge_state["swarm_responses"].insert(0, "✅ BATCH FULL: HANDOFF TO COLLECTOR.")
                         if bridge_state["total_data_points"] % 5 == 0: break
                 target_idx = (target_idx + 1) % len(SNIPER_TARGETS)
             time.sleep(10)
@@ -87,38 +97,64 @@ def health(): return "200 OK", 200
 @app.route("/dashboard")
 def index():
     return render_template_string("""
-    <!DOCTYPE html><html><head><title>Aggressive Sniper Swarm</title><meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { background: #000; color: #ff00ff; font-family: monospace; text-align: center; padding: 20px; }
-        .box { border: 1px solid #ff00ff; padding: 20px; margin: 20px; box-shadow: 0 0 15px #ff00ff; }
-        #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #330033; font-size: 12px; }
-        input { width: 60%; padding: 12px; background: #000; border: 1px solid #ff00ff; color: #fff; }
-        button { padding: 12px; background: #ff00ff; color: #000; border: none; font-weight: bold; cursor: pointer; }
-        .signal { color: #00ff00; }
-    </style></head><body>
-    <h1>AGGRESSIVE SNIPER SWARM</h1>
-    <div class="box">
-        TOTAL SIGNALS CAPTURED: <span id="t">{{t}}</span> | NEXT BATCH: <span id="n">{{n}}</span><br>
-        OPERATOR: {{op[:10]}}... | COLLECTOR: {{coll[:10]}}...
-    </div>
-    <div id="chat"></div><br>
-    <input id="i" placeholder="/start-swarm..."><button onclick="s()">SEND</button>
-    <script>
-        async function s(){
-            const i=document.getElementById("i");
-            if(!i.value) return;
-            await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})});
-            i.value="";
-        }
-        async function u(){
-            const r=await fetch("/data"); 
-            const d=await r.json(); 
-            document.getElementById("t").innerText=d.t; 
-            document.getElementById("n").innerText=d.n; 
-            document.getElementById("chat").innerHTML=d.m.map(x=>`<div class="${x.includes('CRITICAL')?'signal':''}">`+x+"</div>").join("");
-        }
-        setInterval(u, 2000);
-    </script></body></html>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Aggressive Sniper Swarm</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+        <style>
+            body { background: #000; color: #ff00ff; font-family: monospace; text-align: center; padding: 20px; margin: 0; overflow: hidden; }
+            .box { border: 1px solid #ff00ff; padding: 20px; margin: 20px auto; box-shadow: 0 0 15px #ff00ff; max-width: 90%; }
+            #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #330033; font-size: 12px; margin: 0 auto; max-width: 90%; }
+            .input-container { display: flex; justify-content: center; margin-top: 20px; max-width: 90%; margin-left: auto; margin-right: auto; }
+            input { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #ff00ff; color: #fff; outline: none; }
+            input:focus { box-shadow: 0 0 8px #00ffff; border-color: #00ffff; }
+            button { padding: 12px; background: #ff00ff; color: #000; border: none; font-weight: bold; cursor: pointer; margin-left: 10px; }
+            .signal { color: #00ff00; }
+            @media (max-width: 600px) {
+                body { padding: 10px; }
+                .box { margin: 10px auto; padding: 15px; }
+                #chat { height: 300px; margin: 0 auto; }
+                .input-container { flex-direction: row; margin-top: 15px; }
+                input { width: 70%; }
+                button { margin-left: 5px; padding: 10px; }
+            }
+        </style>
+    </head>
+    <body>
+        <h1>AGGRESSIVE SNIPER SWARM</h1>
+        <div class="box">
+            TOTAL SIGNALS CAPTURED: <span id="t">{{t}}</span> | NEXT BATCH: <span id="n">{{n}}</span><br>
+            OPERATOR: {{op[:10]}}... | COLLECTOR: {{coll[:10]}}...
+        </div>
+        <div id="chat"></div><br>
+        <div class="input-container">
+            <input id="i" placeholder="/start-swarm...">
+            <button onclick="s()">SEND</button>
+        </div>
+        <script>
+            async function s(){
+                const i=document.getElementById("i");
+                if(!i.value) return;
+                const sendButton = document.querySelector("button");
+                sendButton.innerText = "TRANSMITTING...";
+                sendButton.disabled = true;
+                await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})});
+                i.value="";
+                sendButton.innerText = "SEND";
+                sendButton.disabled = false;
+            }
+            async function u(){
+                const r=await fetch("/data"); 
+                const d=await r.json(); 
+                document.getElementById("t").innerText=d.t; 
+                document.getElementById("n").innerText=d.n; 
+                document.getElementById("chat").innerHTML=d.m.map(x=>`<div class="${x.includes(\'CRITICAL\')?\'signal\':\'\'}">`+x+"</div>").join("");
+            }
+            setInterval(u, 2000);
+        </script>
+    </body>
+    </html>
     """, t=bridge_state["total_data_points"], n=bridge_state["next_batch_countdown"], op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
 
 @app.route("/send", methods=["POST"])
