@@ -6,8 +6,8 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 
 # --- Reality Bridge Configuration (Environment Variables) ---
-OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
-COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM")
+OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYX3kM")
+COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYX3kM")
 
 # --- In-Memory Bridge Storage ---
 bridge_state = {
@@ -78,15 +78,18 @@ def swarm_engine():
                     for signal_source, signal_data in verified_data:
                         bridge_state["total_data_points"] += 1
                         bridge_state["next_batch_countdown"] -= 1
-                        bridge_state["swarm_responses"].insert(0, f"⚡ CRITICAL VALIDATION: {signal_source} | {signal_data}")
+                        # Node Signing and Reality Log
+                        signed_validation = f"⚡ CRITICAL VALIDATION: Signed by {OPERATOR_NODE_ID[:10]}... | Source: {signal_source} | Data: {signal_data}"
+                        bridge_state["swarm_responses"].insert(0, signed_validation)
                         if bridge_state["next_batch_countdown"] <= 0:
                             bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
-                            bridge_state["swarm_responses"].insert(0, "✅ BATCH FULL: HANDOFF TO COLLECTOR.")
+                            bridge_state["swarm_responses"].insert(0, f"✅ DELIVERY SUCCESS TO COLLECTOR: {COLLECTOR_NODE_ID[:10]}...")
                         if bridge_state["total_data_points"] % 5 == 0: break
                 target_idx = (target_idx + 1) % len(SNIPER_TARGETS)
-            time.sleep(10)
+            time.sleep(5) # Reduced sleep for maximum frequency
         except Exception as e:
-            time.sleep(10)
+            print(f"[-] SWARM ENGINE ERROR: {e}")
+            time.sleep(5)
 
 threading.Thread(target=swarm_engine, daemon=True).start()
 
@@ -105,11 +108,11 @@ def index():
         <style>
             body { background: #000; color: #ff00ff; font-family: monospace; text-align: center; padding: 20px; margin: 0; overflow: hidden; }
             .box { border: 1px solid #ff00ff; padding: 20px; margin: 20px auto; box-shadow: 0 0 15px #ff00ff; max-width: 90%; }
-            #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #330033; font-size: 12px; margin: 0 auto; max-width: 90%; }
-            .input-container { display: flex; justify-content: center; margin-top: 20px; max-width: 90%; margin-left: auto; margin-right: auto; }
-            input { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #ff00ff; color: #fff; outline: none; }
+            #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #330033; font-size: 12px; margin: 0 auto; max-width: 90%; z-index: 1; position: relative; }
+            .input-container { display: flex; justify-content: center; margin-top: 20px; max-width: 90%; margin-left: auto; margin-right: auto; z-index: 2; position: relative; }
+            input { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #ff00ff; color: #fff; outline: none; z-index: 2; }
             input:focus { box-shadow: 0 0 8px #00ffff; border-color: #00ffff; }
-            button { padding: 12px; background: #ff00ff; color: #000; border: none; font-weight: bold; cursor: pointer; margin-left: 10px; }
+            button { padding: 12px; background: #ff00ff; color: #000; border: none; font-weight: bold; cursor: pointer; margin-left: 10px; z-index: 2; }
             .signal { color: #00ff00; }
             @media (max-width: 600px) {
                 body { padding: 10px; }
@@ -149,7 +152,7 @@ def index():
                 const d=await r.json(); 
                 document.getElementById("t").innerText=d.t; 
                 document.getElementById("n").innerText=d.n; 
-                document.getElementById("chat").innerHTML=d.m.map(x=>`<div class="${x.includes(\'CRITICAL\')?\'signal\':\'\'}">`+x+"</div>").join("");
+                document.getElementById("chat").innerHTML=d.m.map(x=>`<div class="${x.includes(\'CRITICAL\') || x.includes(\'DELIVERY SUCCESS\') ? \'signal\' : \'\'}">`+x+"</div>").join("");
             }
             setInterval(u, 2000);
         </script>
