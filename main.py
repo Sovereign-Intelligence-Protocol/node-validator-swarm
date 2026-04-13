@@ -22,9 +22,11 @@ NODE_BATCH_SIZE = 5
 
 # --- High-Velocity Sniper Targets ---
 SNIPER_TARGETS = [
-    "live network signal", "node deployment data", "validator status",
-    "blockchain telemetry", "network ping status", "consensus changes",
-    "p2p discovery", "node sync alerts", "traffic anomalies"
+    "live high-frequency network signals", "new node deployment data", "real-time validator node status",
+    "blockchain network telemetry", "decentralized network ping status", "validator consensus changes",
+    "peer-to-peer network discovery events", "node synchronization alerts", "network traffic anomalies",
+    "crypto node health reports", "new blockchain forks", "mining pool updates",
+    "decentralized exchange liquidity events", "smart contract deployment alerts", "NFT marketplace activity spikes"
 ]
 
 USER_AGENTS = [
@@ -47,7 +49,7 @@ def scrape_sniper_signals(query):
         }
         # Using a more direct search query to trigger results
         search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}&num=10"
-        response = requests.get(search_url, headers=headers, timeout=10)
+        response = requests.get(search_url, headers=headers, timeout=5)
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
@@ -87,6 +89,26 @@ def swarm_engine():
     target_idx = 0
     while True:
         try:
+            if bridge_state["swarm_commands"]:
+                cmd = bridge_state["swarm_commands"].pop(0)
+                if cmd.startswith("/start-swarm"):
+                    bridge_state["swarm_active"] = True
+                    bridge_state["swarm_responses"].insert(0, f"🎯 SNIPER LOOP RE-ENGAGED. Operator: {OPERATOR_NODE_ID[:8]}...")
+                elif cmd.startswith("/stop-swarm"):
+                    bridge_state["swarm_active"] = False
+                    bridge_state["swarm_responses"].insert(0, f"🛑 SNIPER LOOP PAUSED. Operator: {OPERATOR_NODE_ID[:8]}...")
+                else: # Custom search command
+                    bridge_state["swarm_responses"].insert(0, f"🔍 CUSTOM TARGET: {cmd}")
+                    verified_data = scrape_sniper_signals(cmd)
+                    if verified_data:
+                        for signal_source, signal_data in verified_data:
+                            bridge_state["total_data_points"] += 1
+                            bridge_state["next_batch_countdown"] -= 1
+                            bridge_state["swarm_responses"].insert(0, f"⚡ CRITICAL VALIDATION: {signal_source} | {signal_data}")
+                            if bridge_state["next_batch_countdown"] <= 0:
+                                bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
+                                bridge_state["swarm_responses"].insert(0, f"✅ BATCH FULL: SIGNAL HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
+
             if bridge_state["swarm_active"]:
                 target = SNIPER_TARGETS[target_idx]
                 verified_data = scrape_sniper_signals(target)
@@ -100,10 +122,6 @@ def swarm_engine():
                         if bridge_state["next_batch_countdown"] <= 0:
                             bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
                             bridge_state["swarm_responses"].insert(0, f"✅ BATCH FULL: SIGNAL HANDOFF TO COLLECTOR: {COLLECTOR_NODE_ID[:8]}...")
-                        
-                        # Stop after 5 to match batch size and maintain speed
-                        if bridge_state["total_data_points"] % 5 == 0:
-                            break
 
                 target_idx = (target_idx + 1) % len(SNIPER_TARGETS)
             
@@ -111,6 +129,7 @@ def swarm_engine():
             
         except Exception as e:
             print(f"[-] SNIPER LOOP CRASH: {e}")
+            bridge_state["swarm_responses"].insert(0, f"❌ SNIPER CRASH: {e}")
             time.sleep(10)
 
 threading.Thread(target=swarm_engine, daemon=True).start()
@@ -128,6 +147,8 @@ def index():
         body { background: #000; color: #ff00ff; font-family: monospace; text-align: center; padding: 20px; }
         .box { border: 1px solid #ff00ff; padding: 20px; margin: 20px; box-shadow: 0 0 15px #ff00ff; }
         #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #330033; font-size: 12px; }
+        input { width: 60%; padding: 12px; background: #000; border: 1px solid #ff00ff; color: #fff; }
+        button { padding: 12px; background: #ff00ff; color: #000; border: none; font-weight: bold; }
         .signal { color: #00ff00; }
         .alert { color: #ff0000; }
     </style></head><body>
@@ -138,7 +159,18 @@ def index():
         OPERATOR NODE: {{op[:10]}}... | COLLECTOR NODE: {{coll[:10]}}...
     </div>
     <div id="chat"></div><br>
+    <input id="i" placeholder="/start-swarm..."><button onclick="s()">SEND</button>
     <script>
+        async function s(){
+            const i=document.getElementById("i");
+            const sendButton = document.querySelector("button");
+            sendButton.innerText = "TRANSMITTING...";
+            sendButton.disabled = true;
+            await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})});
+            i.value="";
+            sendButton.innerText = "SEND";
+            sendButton.disabled = false;
+        }
         async function u(){
             const r=await fetch("/data"); 
             const d=await r.json(); 
@@ -146,12 +178,19 @@ def index():
             document.getElementById("n").innerText=d.n; 
             document.getElementById("chat").innerHTML=d.m.map(x=>{
                 if(x.includes("CRITICAL VALIDATION")) return `<div class="signal">${x}</div>`;
+                if(x.includes("CRASH") || x.includes("ERROR")) return `<div class="alert">${x}</div>`;
                 return `<div>${x}</div>`;
             }).join("");
         }
         setInterval(u, 2000);
     </script></body></html>
     """, t=bridge_state["total_data_points"], n=bridge_state["next_batch_countdown"], op=OPERATOR_NODE_ID, coll=COLLECTOR_NODE_ID)
+
+@app.route("/send", methods=["POST"])
+def send():
+    msg = request.json.get("message")
+    bridge_state["swarm_commands"].append(msg)
+    return jsonify({"ok":True})
 
 @app.route("/data")
 def data():
