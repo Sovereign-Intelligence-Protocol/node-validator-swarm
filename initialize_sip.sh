@@ -28,20 +28,20 @@ if ! $KEYS_FROM_ENV || ! $PULSE_RAILWAY_90S; then usage; fi
 echo "--- [S.I.P. INITIALIZATION START] ---"
 
 # Safety Check: Ensure the critical recovery address is set in Railway Variables
-if [ -z "$RECOVERY_ID" ]; then
-    echo "CRITICAL ERROR: RECOVERY_ID not found in Railway Variables. System aborting to prevent loss."
+if [ -z "$KRAKEN_RECOVERY_ADDR" ]; then
+    echo "CRITICAL ERROR: KRAKEN_RECOVERY_ADDR not found in Railway Variables. System aborting to prevent loss."
     exit 1
 fi
 
 # Configure S.I.P. Runtime Parameters
 export SIP_PULSE_90S=90
 export SIP_SLEEP_4_5M=270
-export SIP_WEBSOCKET_URL="wss://api-m2m.gateway.v4/live"
+export SIP_WEBSOCKET_URL="wss://ws-auth.kraken.com/"
 export SIP_AUTONOMY_LEVEL=1.0
 
 echo "Environment: RAILWAY_CLOUD"
 echo "Pulse Logic: 90s Scrape / 4.5m Stealth"
-echo "Recovery ID: ${RECOVERY_ID:0:6}********" # Masked for security logs
+echo "Kraken Recovery Address: ${KRAKEN_RECOVERY_ADDR:0:6}********" # Masked for security logs
 echo "--- [S.I.P. INITIALIZATION COMPLETE] ---"
 
 # EXECUTION LAYER: Launching the Autonomous Agent

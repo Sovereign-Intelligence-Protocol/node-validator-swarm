@@ -8,16 +8,16 @@ from flask import Flask, render_template_string, request, jsonify
 app = Flask(__name__)
 
 # --- Reality Bridge Configuration (Environment Variables) ---
-OPERATOR_NODE_ID = os.getenv("OPERATOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYX3kM")
-COLLECTOR_NODE_ID = os.getenv("COLLECTOR_NODE_ID", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYX3kM")
+OPERATOR_NODE_ID = os.getenv("KRAKEN_API_KEY", "YOUR_KRAKEN_API_KEY")
+COLLECTOR_NODE_ID = os.getenv("KRAKEN_PRIVATE_KEY", "YOUR_KRAKEN_PRIVATE_KEY")
 
 # --- S.I.P. v4.2 Protocol Parameters ---
 # These will be updated dynamically from the Railway Vault
 SIP_CONFIG = {
     "PULSE_90S": int(os.getenv("SIP_PULSE_90S", 90)),
     "SLEEP_4_5M": int(os.getenv("SIP_SLEEP_4_5M", 270)),
-    "WEBSOCKET_URL": os.getenv("SIP_WEBSOCKET_URL", "wss://api-m2m.gateway.v4/live"),
-    "RECOVERY_ID": os.getenv("SIP_RECOVERY_ID", "USER_HARDCODED_ID_001"),
+    "WEBSOCKET_URL": os.getenv("SIP_WEBSOCKET_URL", "wss://ws-auth.kraken.com/"),
+    "RECOVERY_ID": os.getenv("KRAKEN_RECOVERY_ADDR", "USER_HARDCODED_ID_001"),
     "AUTONOMY_LEVEL": float(os.getenv("SIP_AUTONOMY_LEVEL", 1.0)),
 }
 
@@ -35,6 +35,25 @@ bridge_state = {
 }
 
 NODE_BATCH_SIZE = 5
+
+async def scrape_duckduckgo(query):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+    }
+    try:
+        response = requests.get(f"https://duckduckgo.com/html/?q={query}", headers=headers, timeout=10)
+        response.raise_for_status() # Raise an exception for HTTP errors
+        soup = BeautifulSoup(response.text, 'html.parser')
+        results = []
+        for result in soup.select('.result__a'):
+            title = result.text.strip()
+            url = result['href']
+            if title and url:
+                results.append({'title': title, 'url': url})
+        return results
+    except requests.exceptions.RequestException as e:
+        print(f"DuckDuckGo scraping error: {e}")
+        return []
 
 async def pulse_extraction():
     # Check for Vault Synchronization
@@ -55,12 +74,20 @@ async def pulse_extraction():
             await asyncio.sleep(SIP_CONFIG["PULSE_90S"])
             
             # Data Validation Layer
-            simulated_signal = f"M2M Network Signal {random.randint(10000, 99999)} - Node Latency: {random.uniform(0.01, 0.1):.3f}ms"
-            bridge_state["total_data_points"] += 1
-            bridge_state["next_batch_countdown"] -= 1
+            query = "business leads blockchain" # Example query, can be made dynamic
+            scraped_data = await scrape_duckduckgo(query)
+            if scraped_data:
+                bridge_state["total_data_points"] += len(scraped_data)
+                bridge_state["swarm_responses"].insert(0, f"✅ SCRAPED {len(scraped_data)} new data points from DuckDuckGo for '{query}'.")
+            else:
+                bridge_state["swarm_responses"].insert(0, f"⚠️ No data scraped from DuckDuckGo for '{query}'.")
 
-            signed_log = f"⚡ CRITICAL VALIDATION: Signed by {OPERATOR_NODE_ID[:10]}... | {simulated_signal}"
-            bridge_state["swarm_responses"].insert(0, signed_log)
+            if scraped_data: # Only decrement if actual data was scraped
+                bridge_state["next_batch_countdown"] -= 1
+
+            if scraped_data:
+                signed_log = f"⚡ CRITICAL VALIDATION: Signed by {OPERATOR_NODE_ID[:10]}... | First result: {scraped_data[0]['title'][:50]}..."
+                bridge_state["swarm_responses"].insert(0, signed_log)
 
             if bridge_state["next_batch_countdown"] <= 0:
                 bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
@@ -119,8 +146,7 @@ def index():
         </div>
         <div id="chat"></div><br>
         <div class="input-container">
-            <input id="i" placeholder="Enter Command..." onkeydown="if(event.key==='Enter')s()">
-            <button onclick="s()">SEND</button>
+           <input id="i" placeholder="Enter Command..." onkeydown="if(event.key===\'Enter\')s()" tabindex="0" style="touch-action: manipulation;">            <button onclick="s()">SEND</button>
         </div>
         <script>
             async function s(){
