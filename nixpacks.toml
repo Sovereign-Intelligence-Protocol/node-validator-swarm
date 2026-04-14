@@ -5,8 +5,16 @@ nixPkgs = ["python311Full", "playwright"]
 cmds = [
   "pip install --upgrade pip",
   "pip install -r requirements.txt",
-  "playwright install --with-deps chromium"
+  "playwright install-deps",
+  "playwright install chromium"
 ]
 
 [start]
 cmd = "python main.py"
+
+[variables]
+SIP_PULSE_90S = "90"
+SIP_SLEEP_4_5M = "270"
+SIP_WEBSOCKET_URL = "wss://api-m2m.gateway.v4/live"
+SIP_RECOVERY_ID = "USER_HARDCODED_ID_001"
+SIP_AUTONOMY_LEVEL = "1.0"
