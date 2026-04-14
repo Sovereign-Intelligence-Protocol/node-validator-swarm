@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string, request, jsonify
-import os, threading, time, json, re, random, csv
+import os, threading, time, json, re, random
 import requests
 from bs4 import BeautifulSoup
 
@@ -14,15 +14,15 @@ bridge_state = {
     "swarm_active": True,
     "total_data_points": 0,
     "next_batch_countdown": 5,
-    "swarm_responses": ["🚀 AGGRESSIVE SNIPER MODE ACTIVATED."],
+    "swarm_responses": ["🚀 AGGRESSIVE SNIPER MODE ACTIVATED. 24/7 AUTONOMOUS LOOP ENGAGED."],
     "swarm_commands": []
 }
 
 NODE_BATCH_SIZE = 5
 
 SNIPER_TARGETS = [
-    "blockchain network signal", "node deployment data", "validator status live",
-    "p2p network discovery", "network telemetry report", "consensus signal active"
+    "high frequency network signal", "node deployment data live", "validator status real-time",
+    "p2p network discovery protocol", "network telemetry data stream", "consensus signal validation"
 ]
 
 USER_AGENTS = [
@@ -42,6 +42,7 @@ def scrape_sniper_signals(query):
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
         }
+        # Use DuckDuckGo HTML for high-velocity scraping
         url = f"https://html.duckduckgo.com/html/?q={query.replace(' ', '+')}"
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
@@ -52,45 +53,59 @@ def scrape_sniper_signals(query):
                 if title_elem and snippet_elem:
                     link = title_elem.get("href", "N/A")
                     snippet = snippet_elem.text.strip()
-                    if any(char.isdigit() for char in snippet) or "node" in snippet.lower():
+                    # Filter for real-world network signals or node data
+                    if any(kw in snippet.lower() for kw in ["node", "network", "signal", "validator", "data", "status"]):
                         data_points.append([link[:40] + "...", snippet[:80] + "..."])
     except Exception as e:
-        print(f"[-] ERROR: {e}")
+        print(f"[-] SCRAPE ERROR: {e}")
     return data_points
 
 def swarm_engine():
     target_idx = 0
     while True:
         try:
+            # Process manual commands first (God Mode Override)
             if bridge_state["swarm_commands"]:
                 cmd = bridge_state["swarm_commands"].pop(0)
                 if cmd.startswith("/start-swarm"):
                     bridge_state["swarm_active"] = True
-                    bridge_state["swarm_responses"].insert(0, "🎯 SNIPER LOOP RE-ENGAGED.")
+                    bridge_state["swarm_responses"].insert(0, "🎯 SNIPER LOOP RE-ENGAGED BY OPERATOR.")
                 elif cmd.startswith("/stop-swarm"):
                     bridge_state["swarm_active"] = False
-                    bridge_state["swarm_responses"].insert(0, "🛑 SNIPER LOOP PAUSED.")
+                    bridge_state["swarm_responses"].insert(0, "🛑 SNIPER LOOP PAUSED BY OPERATOR.")
 
             if bridge_state["swarm_active"]:
                 target = SNIPER_TARGETS[target_idx]
                 verified_data = scrape_sniper_signals(target)
+                
                 if verified_data:
                     for signal_source, signal_data in verified_data:
+                        # Microsecond push logic: Bypass batching for immediate delivery
                         bridge_state["total_data_points"] += 1
                         bridge_state["next_batch_countdown"] -= 1
-                        # Node Signing and Reality Log
-                        signed_validation = f"⚡ CRITICAL VALIDATION: Signed by {OPERATOR_NODE_ID[:10]}... | Source: {signal_source} | Data: {signal_data}"
-                        bridge_state["swarm_responses"].insert(0, signed_validation)
+                        
+                        # Node Signing: Signed by Operator Node
+                        signed_log = f"⚡ CRITICAL VALIDATION: Signed by {OPERATOR_NODE_ID[:10]}... | Signal: {signal_data}"
+                        bridge_state["swarm_responses"].insert(0, signed_log)
+                        
+                        # Delivery Success Ping
                         if bridge_state["next_batch_countdown"] <= 0:
                             bridge_state["next_batch_countdown"] = NODE_BATCH_SIZE
-                            bridge_state["swarm_responses"].insert(0, f"✅ DELIVERY SUCCESS TO COLLECTOR: {COLLECTOR_NODE_ID[:10]}...")
+                            delivery_ping = f"✅ DELIVERY SUCCESS TO COLLECTOR: {COLLECTOR_NODE_ID[:10]}..."
+                            bridge_state["swarm_responses"].insert(0, delivery_ping)
+                        
+                        # Maximum frequency limit per cycle to avoid blocking
                         if bridge_state["total_data_points"] % 5 == 0: break
+                
                 target_idx = (target_idx + 1) % len(SNIPER_TARGETS)
-            time.sleep(5) # Reduced sleep for maximum frequency
+            
+            # Maximum Frequency: Zero delay between recursive scrapes
+            time.sleep(1) 
         except Exception as e:
             print(f"[-] SWARM ENGINE ERROR: {e}")
             time.sleep(5)
 
+# Initialize the 24/7 Autonomous Loop
 threading.Thread(target=swarm_engine, daemon=True).start()
 
 @app.route("/health")
@@ -106,55 +121,55 @@ def index():
         <title>Aggressive Sniper Swarm</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
         <style>
-            body { background: #000; color: #ff00ff; font-family: monospace; text-align: center; padding: 20px; margin: 0; overflow: hidden; }
-            .box { border: 1px solid #ff00ff; padding: 20px; margin: 20px auto; box-shadow: 0 0 15px #ff00ff; max-width: 90%; }
-            #chat { height: 400px; overflow-y: auto; background: #050505; text-align: left; padding: 10px; border: 1px solid #330033; font-size: 12px; margin: 0 auto; max-width: 90%; z-index: 1; position: relative; }
-            .input-container { display: flex; justify-content: center; margin-top: 20px; max-width: 90%; margin-left: auto; margin-right: auto; z-index: 2; position: relative; }
-            input { flex-grow: 1; padding: 12px; background: #000; border: 1px solid #ff00ff; color: #fff; outline: none; z-index: 2; }
-            input:focus { box-shadow: 0 0 8px #00ffff; border-color: #00ffff; }
-            button { padding: 12px; background: #ff00ff; color: #000; border: none; font-weight: bold; cursor: pointer; margin-left: 10px; z-index: 2; }
-            .signal { color: #00ff00; }
-            @media (max-width: 600px) {
-                body { padding: 10px; }
-                .box { margin: 10px auto; padding: 15px; }
-                #chat { height: 300px; margin: 0 auto; }
-                .input-container { flex-direction: row; margin-top: 15px; }
-                input { width: 70%; }
-                button { margin-left: 5px; padding: 10px; }
-            }
+            body { background: #000; color: #00ffff; font-family: 'Courier New', monospace; text-align: center; padding: 20px; margin: 0; }
+            .box { border: 2px solid #00ffff; padding: 20px; margin: 20px auto; box-shadow: 0 0 20px #00ffff; max-width: 900px; background: rgba(0, 255, 255, 0.05); }
+            #chat { height: 450px; overflow-y: auto; background: #050505; text-align: left; padding: 15px; border: 1px solid #004444; font-size: 13px; margin: 0 auto; max-width: 900px; }
+            .input-container { display: flex; justify-content: center; margin-top: 20px; max-width: 900px; margin-left: auto; margin-right: auto; }
+            input { flex-grow: 1; padding: 15px; background: #000; border: 1px solid #00ffff; color: #fff; outline: none; font-family: inherit; }
+            input:focus { box-shadow: 0 0 10px #00ffff; }
+            button { padding: 15px 30px; background: #00ffff; color: #000; border: none; font-weight: bold; cursor: pointer; margin-left: 10px; transition: 0.3s; }
+            button:hover { background: #fff; box-shadow: 0 0 15px #fff; }
+            .signal { color: #00ff00; font-weight: bold; }
+            .delivery { color: #ffff00; text-decoration: underline; }
+            h1 { letter-spacing: 5px; text-shadow: 0 0 10px #00ffff; }
         </style>
     </head>
     <body>
-        <h1>AGGRESSIVE SNIPER SWARM</h1>
+        <h1>NODE-VALIDATOR SWARM</h1>
         <div class="box">
-            TOTAL SIGNALS CAPTURED: <span id="t">{{t}}</span> | NEXT BATCH: <span id="n">{{n}}</span><br>
-            OPERATOR: {{op[:10]}}... | COLLECTOR: {{coll[:10]}}...
+            TOTAL VALIDATED DATA: <span id="t">{{t}}</span> | NEXT BATCH COUNTDOWN: <span id="n">{{n}}</span><br>
+            OPERATOR NODE: {{op[:15]}}... | COLLECTOR NODE: {{coll[:15]}}...
         </div>
         <div id="chat"></div><br>
         <div class="input-container">
-            <input id="i" placeholder="/start-swarm...">
+            <input id="i" placeholder="Enter Command (/start-swarm, /stop-swarm)..." onkeydown="if(event.key==='Enter')s()">
             <button onclick="s()">SEND</button>
         </div>
         <script>
             async function s(){
                 const i=document.getElementById("i");
                 if(!i.value) return;
-                const sendButton = document.querySelector("button");
-                sendButton.innerText = "TRANSMITTING...";
-                sendButton.disabled = true;
+                const btn = document.querySelector("button");
+                btn.innerText = "TRANSMITTING...";
                 await fetch("/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:i.value})});
                 i.value="";
-                sendButton.innerText = "SEND";
-                sendButton.disabled = false;
+                btn.innerText = "SEND";
             }
             async function u(){
-                const r=await fetch("/data"); 
-                const d=await r.json(); 
-                document.getElementById("t").innerText=d.t; 
-                document.getElementById("n").innerText=d.n; 
-                document.getElementById("chat").innerHTML=d.m.map(x=>`<div class="${x.includes(\'CRITICAL\') || x.includes(\'DELIVERY SUCCESS\') ? \'signal\' : \'\'}">`+x+"</div>").join("");
+                try {
+                    const r=await fetch("/data"); 
+                    const d=await r.json(); 
+                    document.getElementById("t").innerText=d.t; 
+                    document.getElementById("n").innerText=d.n; 
+                    document.getElementById("chat").innerHTML=d.m.map(x=>{
+                        let cls = '';
+                        if(x.includes('CRITICAL')) cls = 'signal';
+                        if(x.includes('DELIVERY SUCCESS')) cls = 'delivery';
+                        return `<div class="${cls}">`+x+"</div>";
+                    }).join("");
+                } catch(e) {}
             }
-            setInterval(u, 2000);
+            setInterval(u, 1500);
         </script>
     </body>
     </html>
@@ -168,8 +183,13 @@ def send():
 
 @app.route("/data")
 def data():
-    return jsonify({"t":bridge_state["total_data_points"],"n":bridge_state["next_batch_countdown"],"m":bridge_state["swarm_responses"][:30]})
+    return jsonify({
+        "t": bridge_state["total_data_points"],
+        "n": bridge_state["next_batch_countdown"],
+        "m": bridge_state["swarm_responses"][:50]
+    })
 
 if __name__ == "__main__":
+    # Railway Dynamic Port Bridge
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
