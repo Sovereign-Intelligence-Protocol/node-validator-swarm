@@ -6,15 +6,16 @@ cmds = [
   "pip install --upgrade pip",
   "pip install -r requirements.txt",
   "playwright install-deps",
-  "playwright install chromium"
+  "playwright install chromium",
+  "chmod +x initialize_sip.sh"
 ]
 
 [start]
-cmd = "python main.py"
+cmd = "bash initialize_sip.sh --keys FROM_ENV --pulse RAILWAY_90S"
 
 [variables]
 SIP_PULSE_90S = "90"
 SIP_SLEEP_4_5M = "270"
 SIP_WEBSOCKET_URL = "wss://api-m2m.gateway.v4/live"
-SIP_RECOVERY_ID = "USER_HARDCODED_ID_001"
 SIP_AUTONOMY_LEVEL = "1.0"
+# RECOVERY_ID MUST be set in Railway Vault

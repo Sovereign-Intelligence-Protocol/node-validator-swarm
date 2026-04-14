@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# This script initializes the Sovereign Intelligence Protocol (S.I.P.) environment.
-# It sources the Railway .env file and sets up SIP-specific configurations.
+# ============================================================
+# SOVEREIGN INTELLIGENCE PROTOCOL (S.I.P.) - v4.2.1
+# Railway Deployment & M2M Extraction Engine
+# ============================================================
 
-# Function to display usage
 usage() {
     echo "Usage: $0 --keys FROM_ENV --pulse RAILWAY_90S"
-    echo "  --keys FROM_ENV: Indicates that API keys should be pulled from environment variables."
-    echo "  --pulse RAILWAY_90S: Configures the SIP pulse for Railway deployment (90s pulse, 4.5m sleep)."
     exit 1
 }
 
@@ -16,57 +15,35 @@ KEYS_FROM_ENV=false
 PULSE_RAILWAY_90S=false
 
 while [[ "$#" -gt 0 ]]; do
-    key="$1"
-    case $key in
-        --keys)
-        if [[ "$2" == "FROM_ENV" ]]; then
-            KEYS_FROM_ENV=true
-            shift
-        else
-            usage
-        fi
-        ;;
-        --pulse)
-        if [[ "$2" == "RAILWAY_90S" ]]; then
-            PULSE_RAILWAY_90S=true
-            shift
-        else
-            usage
-        fi
-        ;;
-        *)
-        usage
-        ;;
+    case $1 in
+        --keys) [[ "$2" == "FROM_ENV" ]] && KEYS_FROM_ENV=true && shift ;;
+        --pulse) [[ "$2" == "RAILWAY_90S" ]] && PULSE_RAILWAY_90S=true && shift ;;
+        *) usage ;;
     esac
     shift
 done
 
-# Ensure required arguments are provided
-if ! $KEYS_FROM_ENV || ! $PULSE_RAILWAY_90S; then
-    usage
+if ! $KEYS_FROM_ENV || ! $PULSE_RAILWAY_90S; then usage; fi
+
+echo "--- [S.I.P. INITIALIZATION START] ---"
+
+# Safety Check: Ensure the critical recovery address is set in Railway Variables
+if [ -z "$RECOVERY_ID" ]; then
+    echo "CRITICAL ERROR: RECOVERY_ID not found in Railway Variables. System aborting to prevent loss."
+    exit 1
 fi
 
-echo "Initializing Sovereign Intelligence Protocol (S.I.P.) environment..."
+# Configure S.I.P. Runtime Parameters
+export SIP_PULSE_90S=90
+export SIP_SLEEP_4_5M=270
+export SIP_WEBSOCKET_URL="wss://api-m2m.gateway.v4/live"
+export SIP_AUTONOMY_LEVEL=1.0
 
-# Source Railway .env file if it exists (assuming it's in /app/.env for Railway deployments)
-if [ -f "/app/.env" ]; then
-    echo "Sourcing /app/.env for Railway environment variables."
-    source /app/.env
-else
-    echo "Warning: /app/.env not found. Ensure environment variables are set."
-fi
+echo "Environment: RAILWAY_CLOUD"
+echo "Pulse Logic: 90s Scrape / 4.5m Stealth"
+echo "Recovery ID: ${RECOVERY_ID:0:6}********" # Masked for security logs
+echo "--- [S.I.P. INITIALIZATION COMPLETE] ---"
 
-# Set SIP-specific environment variables based on --pulse RAILWAY_90S
-if $PULSE_RAILWAY_90S; then
-    echo "Configuring SIP for Railway 90s pulse."
-    export SIP_PULSE_90S=90
-    export SIP_SLEEP_4_5M=270
-    export SIP_WEBSOCKET_URL="wss://api-m2m.gateway.v4/live"
-    export SIP_RECOVERY_ID="USER_HARDCODED_ID_001" # This should ideally come from Railway secrets
-    export SIP_AUTONOMY_LEVEL=1.0
-fi
-
-echo "S.I.P. environment setup complete."
-
-# Example of how to run the main application after setup
-# python main.py
+# EXECUTION LAYER: Launching the Autonomous Agent
+# In 2026, we use 'unbuffered' python output to ensure logs appear in Railway in real-time.
+python3 -u main.py
