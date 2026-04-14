@@ -3,3 +3,6 @@ redis
 requests
 beautifulsoup4
 playwright
+websockets
+krakenex
+aiohttp
