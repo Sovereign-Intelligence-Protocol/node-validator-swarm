@@ -2,14 +2,18 @@ import os, threading, time, json, re, random, asyncio
 import requests
 from bs4 import BeautifulSoup
 import websockets
+from dotenv import load_dotenv
 
 from flask import Flask, render_template_string, request, jsonify
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
 # --- Reality Bridge Configuration (Environment Variables) ---
-OPERATOR_NODE_ID = os.getenv("KRAKEN_API_KEY", "YOUR_KRAKEN_API_KEY")
-COLLECTOR_NODE_ID = os.getenv("KRAKEN_PRIVATE_KEY", "YOUR_KRAKEN_PRIVATE_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+E2B_API_KEY = os.getenv("E2B_API_KEY")
 
 # --- S.I.P. v4.2 Protocol Parameters ---
 # These will be updated dynamically from the Railway Vault
