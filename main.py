@@ -22,7 +22,7 @@ from pythclient.utils import get_key_from_env
 load_dotenv()
 
 # --- Configuration ---
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 E2B_API_KEY = os.getenv("E2B_API_KEY")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 SOLANA_RPC_URL_BASE = os.getenv("HELIUS_RPC_URL")
