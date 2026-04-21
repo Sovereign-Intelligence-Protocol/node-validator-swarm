@@ -1,7 +1,4 @@
-google-generativeai
 e2b-code-interpreter
 python-dotenv
 helius_sdk
-solana
-pythclient
 jito-searcher-client
