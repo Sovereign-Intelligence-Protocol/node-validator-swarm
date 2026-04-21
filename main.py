@@ -11,10 +11,8 @@ from dotenv import load_dotenv
 
 import httpx
 from solana.rpc.api import Client as SolanaClient
-from solana import transaction
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
-from solana.system_program import TransferParams, transfer
 
 # Load environment variables
 load_dotenv()
@@ -119,26 +117,14 @@ async def check_liquidity(token_address: str) -> float:
 async def check_gas_fees() -> float:
     print("Checking current Solana network gas fees using Helius RPC...")
     try:
-        dummy_payer = PublicKey("11111111111111111111111111111111")
-        result = await call_helius_rpc("getRecentBlockhash", [])
-        if "result" in result:
-            blockhash = result["result"]["value"]["blockhash"]
-            tx = transaction.Transaction()
-            tx.add(transfer(TransferParams(
-                from_pubkey=dummy_payer,
-                to_pubkey=dummy_payer,
-                lamports=1
-            )))
-            tx.recent_blockhash = blockhash
-            tx_size_bytes = len(tx.serialize())
-            lamports_per_signature = 5000
-            total_lamports = lamports_per_signature
-            sol_amount = total_lamports / 1e9
-            sol_price_usd = await get_token_price("SOL")
-            gas_fee_usd = sol_amount * sol_price_usd
-            print(f"[GAS] Estimated fee: {gas_fee_usd:.4f} USD ({sol_amount:.9f} SOL)")
-            return gas_fee_usd
-        return 0.0
+        # Estimate gas fee based on standard transaction size
+        # Standard Solana transaction: ~500 bytes, costs ~5000 lamports
+        lamports_per_signature = 5000
+        sol_amount = lamports_per_signature / 1e9
+        sol_price_usd = await get_token_price("SOL")
+        gas_fee_usd = sol_amount * sol_price_usd
+        print(f"[GAS] Estimated fee: {gas_fee_usd:.4f} USD ({sol_amount:.9f} SOL)")
+        return gas_fee_usd
     except Exception as e:
         print(f"Error checking gas fees: {e}")
         return 0.0
@@ -354,15 +340,10 @@ async def run_scalper():
                 # Execute the trade logic directly
                 print("[TRADE] Preparing transaction for Jito bundle submission...")
                 
-                # Create a simple placeholder transaction
-                tx = transaction.Transaction()
-                tx.add(transfer(TransferParams(
-                    from_pubkey=jito_signer.pubkey(),
-                    to_pubkey=PublicKey("11111111111111111111111111111111"),
-                    lamports=1
-                )))
-                
-                transactions_bytes = [tx.serialize()]
+                # Create a mock transaction hex string for bundle submission
+                # In production, this would be a real signed transaction
+                mock_tx_hex = "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+                transactions_bytes = [bytes.fromhex(mock_tx_hex)]
                 bundle_id = await send_jito_bundle(transactions_bytes, 95)
                 
                 if bundle_id:
