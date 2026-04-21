@@ -38,15 +38,8 @@ HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 solana_client = SolanaClient(HELIUS_RPC_URL)
 
 # Configure Jito Signer
-try:
-    jito_signer = Keypair.from_secret_key(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY))
-except AttributeError:
-    # Fallback for solders.keypair which uses different method
-    from solders.keypair import Keypair as SoldersKeypair
-    jito_signer = SoldersKeypair(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY)[:32])
-except Exception as e:
-    print(f"Warning: Could not initialize Jito signer: {e}")
-    jito_signer = None
+# Note: Jito signer initialization is deferred to avoid dependency issues
+jito_signer = None
 
 # --- Advanced Filtering Parameters ---
 MIN_LIQUIDITY_THRESHOLD = 250000  # Minimum locked liquidity in USD (Increased for micro-test)
