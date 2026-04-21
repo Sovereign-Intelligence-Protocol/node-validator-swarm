@@ -41,3 +41,4 @@ Once the server is **Active**, use the dashboard chat to send commands:
 
 ---
 *Developed under the BMBB Hyper-Scale Initiative.*
+# Triggering deployment for Render Background Worker
