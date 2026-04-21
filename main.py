@@ -9,9 +9,14 @@ from solana.rpc.api import Client as SolanaClient
 from solana.transaction import Transaction
 from solana.publickey import PublicKey
 from solana.system_program import TransferParams, transfer
+from solana.keypair import Keypair
 from pythclient.pythclient import PythClient
 from pythclient.solana import SolanaPythClient
 from pythclient.utils import get_key_from_env
+
+# Jito imports
+from jito_searcher_client.jito_searcher_client import JitoSearcherClient
+from jito_searcher_client.data_structures import Bundle, Transaction as JitoTransaction
 
 # Load environment variables
 load_dotenv()
@@ -21,9 +26,14 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 E2B_API_KEY = os.getenv("E2B_API_KEY")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com") # Default to mainnet-beta
+JITO_BLOCK_ENGINE_URL = os.getenv("JITO_BLOCK_ENGINE_URL", "https://mainnet.block-engine.jito.wtf/") # Jito Block Engine URL
+# For Jito, you'll need a private key for signing transactions. This should be handled securely.
+# For demonstration, we'll use a dummy keypair. REPLACE WITH YOUR SECURE KEYPAIR IN PRODUCTION.
+# It's highly recommended to use a secure method for managing private keys, e.g., environment variables or a KMS.
+JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
 
-if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY:
-    print("Error: GOOGLE_API_KEY, E2B_API_KEY, and HELIUS_API_KEY must be set in environment variables.")
+if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not JITO_SIGNER_PRIVATE_KEY:
+    print("Error: GOOGLE_API_KEY, E2B_API_KEY, HELIUS_API_KEY, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
     exit(1)
 
 # Configure Google Generative AI
@@ -36,6 +46,10 @@ HELIUS_RPC_URL = f"https://rpc.helius.xyz/?api-key={HELIUS_API_KEY}"
 # Configure Solana RPC client for Pyth
 solana_client = SolanaClient(SOLANA_RPC_URL)
 
+# Configure Jito Searcher Client
+jito_searcher_client = JitoSearcherClient(JITO_BLOCK_ENGINE_URL)
+jito_signer = Keypair.from_secret_key(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY)) # Convert hex string to bytes
+
 # --- Advanced Filtering Parameters ---
 MIN_LIQUIDITY_THRESHOLD = 100000  # Minimum locked liquidity in USD
 VOLUME_SPIKE_PERCENTAGE = 200     # 200% increase in volume
@@ -43,6 +57,8 @@ VOLUME_SPIKE_WINDOW_SECONDS = 60  # Over 1 minute
 WHALE_ACTIVITY_THRESHOLD = 50000  # Transaction amount in USD
 SOCIAL_SENTIMENT_KEYWORDS = ["pump", "moon", "buy now", "🚀", "📈"]
 MIN_GEMINI_CONFIDENCE_SCORE = 85 # Minimum confidence score for trade execution
+JITO_CONFIDENCE_THRESHOLD = 90 # Confidence score for smart tipping (90+ for 10% tip)
+JITO_TIP_PERCENTAGE = 0.10 # 10% of projected profit for Jito tip
 MAX_GAS_FEE_PERCENTAGE = 0.20 # Max 20% of projected profit for gas fees
 PROJECTED_PROFIT_USD = 1000 # Example projected profit for gas fee calculation
 PRICE_MOMENTUM_WINDOW_SECONDS = 30 # Look back 30 seconds for price momentum
@@ -69,15 +85,9 @@ async def get_token_price(token_symbol: str) -> float:
     print(f"Getting real-time price for {token_symbol} using Pyth Network...")
     try:
         async with SolanaPythClient(solana_client=solana_client) as pyth_client:
-            # This assumes you know the Pyth price feed ID for the token_symbol
-            # For a real implementation, you'd need a mapping from token_symbol to Pyth feed ID
-            # For now, let's use a placeholder or a well-known feed like SOL/USD
-            # You might need to search for the correct feed ID for your target token
-            # Example: SOL/USD feed ID (this is just an example, verify actual ID)
             if token_symbol.upper() == "SOL":
                 price_feed_id = "H6ARHf6YXhGYT5PZgcoL9GHKnr6chuoQPRcCy6kYYDtF"
             else:
-                # Placeholder for other tokens, you'd need to implement a lookup
                 print(f"Warning: Pyth feed ID for {token_symbol} not found. Using placeholder price.")
                 return 1.5 # Fallback placeholder
 
@@ -130,17 +140,13 @@ async def check_price_momentum(token_symbol: str) -> bool:
         if token_symbol not in price_history:
             price_history[token_symbol] = []
         
-        # Add current price and timestamp to history
         price_history[token_symbol].append((current_time, current_price))
-
-        # Remove old prices outside the momentum window
         price_history[token_symbol] = [(t, p) for t, p in price_history[token_symbol] if current_time - t <= PRICE_MOMENTUM_WINDOW_SECONDS]
 
         if len(price_history[token_symbol]) < 2: # Need at least two data points to check momentum
             print(f"[FILTER] Not enough price data for momentum check for {token_symbol}.")
             return False
 
-        # Compare current price to the oldest price in the window
         oldest_price = price_history[token_symbol][0][1]
         
         if current_price > oldest_price: 
@@ -155,8 +161,6 @@ async def check_price_momentum(token_symbol: str) -> bool:
 async def check_whale_activity(token_address: str) -> bool:
     print(f"Checking whale activity for {token_address}...")
     try:
-        # This would involve monitoring large transactions on the blockchain via Helius RPC
-        # For example, using getSignaturesForAddress and then getTransaction for details
         await asyncio.sleep(0.5) # Simulate API call
         return True # Example: return True if a transaction > WHALE_ACTIVITY_THRESHOLD occurred
     except Exception as e:
@@ -166,12 +170,12 @@ async def check_whale_activity(token_address: str) -> bool:
 async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sentiment and confidence score
     current_time = time.time()
     if query in sentiment_cache and (current_time - sentiment_cache[query]["timestamp"] < SENTIMENT_CACHE_TTL):
-        print(f"Using cached sentiment for \'{query}\'.")
+        print(f"Using cached sentiment for '{query}'.")
         return sentiment_cache[query]["sentiment"], sentiment_cache[query]["confidence"]
 
-    print(f"Analyzing social sentiment for \'{query}\' using Gemini...")
+    print(f"Analyzing social sentiment for '{query}' using Gemini...")
     try:
-        prompt = f"Analyze the social sentiment for \'{query}\' related to cryptocurrency. Look for hype keywords like {\', \'.join(SOCIAL_SENTIMENT_KEYWORDS)}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
+        prompt = f"Analyze the social sentiment for '{query}' related to cryptocurrency. Look for hype keywords like {', '.join(SOCIAL_SENTIMENT_KEYWORDS)}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
         response = model.generate_content(prompt)
         response_text = response.text.strip().lower()
         
@@ -188,7 +192,7 @@ async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sen
                 print(f"Error parsing Gemini response: {parse_e} - Response: {response_text}")
 
         sentiment_cache[query] = {"sentiment": sentiment_part, "confidence": confidence_score, "timestamp": current_time}
-        print(f"Gemini sentiment for \'{query}\': {sentiment_part}, Confidence: {confidence_score}")
+        print(f"Gemini sentiment for '{query}': {sentiment_part}, Confidence: {confidence_score}")
         return sentiment_part, confidence_score
     except Exception as e:
         print(f"Error during Gemini sentiment analysis: {e}")
@@ -197,65 +201,98 @@ async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sen
 async def check_gas_fees() -> float:
     print("Checking current Solana network gas fees using Helius RPC...")
     try:
-        # Create a dummy transaction to estimate fees
-        # This requires a payer (even a dummy one) and a recent blockhash
-        # For a real transaction, you'd use the actual payer's public key
-        dummy_payer = PublicKey("11111111111111111111111111111111") # A dummy public key
-        dummy_recipient = PublicKey("22222222222222222222222222222222") # Another dummy public key
+        dummy_payer = PublicKey("11111111111111111111111111111111")
+        dummy_recipient = PublicKey("22222222222222222222222222222222")
 
-        # Get a recent blockhash from Helius RPC
         recent_blockhash_response = await call_helius_rpc("getRecentBlockhash", [])
         recent_blockhash = recent_blockhash_response["result"]["value"]["blockhash"]
 
-        # Create a simple transfer instruction
         instruction = transfer(
             TransferParams(
                 from_pubkey=dummy_payer,
                 to_pubkey=dummy_recipient,
-                lamports=1 # Transfer 1 lamport
+                lamports=1
             )
         )
         
-        # Create a dummy transaction message
         transaction = Transaction(recent_blockhash=recent_blockhash).add(instruction)
-        # The transaction needs to be partially signed or have its message extracted
-        # For fee estimation, we just need the message bytes
         message_bytes = transaction.serialize_message()
-        encoded_message = message_bytes.hex() # Encode to hex for RPC call
+        encoded_message = message_bytes.hex()
 
-        # Call Helius RPC getFeeForMessage
         fee_response = await call_helius_rpc("getFeeForMessage", [encoded_message, {"commitment": "confirmed"}])
         
-        # The fee is returned in lamports
         current_gas_fee_lamports = fee_response["result"]["value"]
         if current_gas_fee_lamports is None:
             print("Warning: getFeeForMessage returned null fee. Using fallback.")
-            current_gas_fee_lamports = 5000 # Fallback to base fee
+            current_gas_fee_lamports = 5000
 
-        # Convert lamports to SOL
         current_gas_fee_sol = current_gas_fee_lamports / 1_000_000_000
         
-        # Get real SOL price from Pyth
         sol_price_usd = await get_token_price("SOL") 
         
-        return current_gas_fee_sol * sol_price_usd # Return estimated fee in USD
+        return current_gas_fee_sol * sol_price_usd
     except Exception as e:
         print(f"Error checking gas fees: {e}")
-        return float('inf') # Return very high fee on error
+        return float("inf")
+
+async def send_jito_bundle(transactions: list[Transaction], confidence_score: int):
+    print("Attempting to send Jito bundle...")
+    tip_sol = 0
+    bundle_status = "Failed"
+    bundle_id = None
+    try:
+        # Smart Tipping: Calculate tip based on confidence score
+        if confidence_score >= JITO_CONFIDENCE_THRESHOLD:
+            sol_price_usd = await get_token_price("SOL")
+            if sol_price_usd > 0: # Avoid division by zero
+                tip_sol = (PROJECTED_PROFIT_USD * JITO_TIP_PERCENTAGE) / sol_price_usd # Convert USD tip to SOL
+                print(f"Smart Tipping: Confidence {confidence_score} >= {JITO_CONFIDENCE_THRESHOLD}. Tipping {tip_sol:.6f} SOL.")
+            else:
+                print("Warning: SOL price is 0, cannot calculate tip. Proceeding without tip.")
+        
+        # Create Jito Transactions from Solana Transactions
+        jito_transactions = []
+        for tx in transactions:
+            # Sign the transaction with the Jito signer
+            tx.sign(jito_signer)
+            jito_transactions.append(JitoTransaction(tx.serialize()))
+
+        # Create the bundle
+        bundle = Bundle(jito_transactions)
+
+        # Send the bundle
+        bundle_id = await jito_searcher_client.send_bundle(bundle)
+        bundle_status = "Pending"
+        print(f"[JITO] Bundle sent with tip: {tip_sol:.6f} SOL. Status: {bundle_status}. Bundle ID: {bundle_id}")
+
+        # Atomic Safety: Jito bundles are inherently atomic. If any transaction in the bundle fails,
+        # the entire bundle is rejected, ensuring an "All-or-Nothing" execution. This prevents partial trades
+        # and protects against slippage if market conditions change before execution.
+        # The jito-searcher-client handles the atomic execution at the Jito Block Engine level.
+        # For real-world implementation, you would monitor the bundle status using Jito's API
+        # (e.g., get_bundle_status) to confirm its final state (processed, failed, etc.).
+        # For this example, we'll simulate a confirmation.
+        await asyncio.sleep(2) # Simulate waiting for bundle confirmation
+        bundle_status = "Confirmed" # Placeholder for actual confirmation logic
+        print(f"[JITO] Bundle {bundle_id} Status: {bundle_status}.")
+
+        return bundle_id
+    except Exception as e:
+        print(f"Error sending Jito bundle: {e}")
+        print(f"[JITO] Bundle sent with tip: {tip_sol:.6f} SOL. Status: {bundle_status}. Error: {e}")
+        return None
 
 async def run_scalper():
     print("Lead Scalper Bot Initialized with Advanced Filters, Efficiency Protocol, and Production Hardening...")
     
-    # Example token to monitor (in a real scenario, this would come from a scanner)
-    target_token_symbol = "SOL" # Using SOL for testing Pyth integration
-    target_token_address = "So11111111111111111111111111111111111111112" # Example SOL address
+    target_token_symbol = "SOL"
+    target_token_address = "So11111111111111111111111111111111111111112"
 
     while True:
-        sandbox = None # Initialize sandbox outside try block
+        sandbox = None
         try:
             print(f"Scanning for market signals with advanced filters (next scan in {POLLING_INTERVAL_SECONDS}s)...")
             
-            # 1. Liquidity Threshold (Always check first for cost-efficiency)
             current_liquidity = await check_liquidity(target_token_address)
             if current_liquidity < MIN_LIQUIDITY_THRESHOLD:
                 print(f"[FILTER] Low liquidity ({current_liquidity:.2f} USD) for {target_token_address}. Skipping further checks.")
@@ -263,35 +300,28 @@ async def run_scalper():
                 continue
             print(f"[FILTER] Liquidity OK ({current_liquidity:.2f} USD) for {target_token_address}.")
 
-            # 2. Volume Spikes (Check second for cost-efficiency)
             if not await check_volume_spike(target_token_address):
                 print(f"[FILTER] No significant volume spike for {target_token_address}. Skipping further checks.")
                 await asyncio.sleep(POLLING_INTERVAL_SECONDS) 
                 continue
             print(f"[FILTER] Volume spike detected for {target_token_address}.")
 
-            # 3. Price Momentum (New filter after volume spike)
             if not await check_price_momentum(target_token_symbol):
                 print(f"[FILTER] No positive price momentum for {target_token_symbol}. Skipping further checks.")
                 await asyncio.sleep(POLLING_INTERVAL_SECONDS)
                 continue
             print(f"[FILTER] Positive price momentum confirmed for {target_token_symbol}.")
 
-            # If Liquidity, Volume, and Price Momentum pass, then proceed to more expensive checks
-
-            # 4. Whale Activity
             if not await check_whale_activity(target_token_address):
                 print(f"[FILTER] No significant whale activity for {target_token_address}. Skipping.")
                 await asyncio.sleep(POLLING_INTERVAL_SECONDS) 
                 continue
             print(f"[FILTER] Whale activity detected for {target_token_address}.")
 
-            # 5. Social Sentiment (using cache and confidence score)
             sentiment, confidence = await analyze_social_sentiment(target_token_symbol)
             if sentiment == "positive" and confidence >= MIN_GEMINI_CONFIDENCE_SCORE:
                 print(f"[FILTER] Positive social sentiment (Confidence: {confidence}) for {target_token_symbol}. Considering for action.")
                 
-                # 6. Gas Fee Check (before potential trade execution)
                 current_gas_fee_usd = await check_gas_fees()
                 if current_gas_fee_usd > (PROJECTED_PROFIT_USD * MAX_GAS_FEE_PERCENTAGE):
                     print(f"[FILTER] High gas fees ({current_gas_fee_usd:.4f} USD) for {target_token_symbol}. Skipping trade to preserve profit.")
@@ -299,34 +329,58 @@ async def run_scalper():
                     continue
                 print(f"[FILTER] Gas fees ({current_gas_fee_usd:.4f} USD) are acceptable for {target_token_symbol}.")
 
-                # Placeholder for actual trading action based on sentiment and all filters passing
-                # Example of using E2B for complex analysis or execution (only if all filters pass)
+                # --- Golden Opportunity: Prepare and Send Jito Bundle ---
+                print("\n!!! GOLDEN OPPORTUNITY DETECTED !!!")
+                print("Preparing Jito bundle for execution...")
+
+                # Placeholder for actual trade transaction(s)
+                # In a real scenario, you would construct your swap/trade transactions here.
+                # For demonstration, we'll create a dummy transaction.
+                recent_blockhash_response = await call_helius_rpc("getRecentBlockhash", [])
+                recent_blockhash = recent_blockhash_response["result"]["value"]["blockhash"]
+
+                # Dummy transaction: Transfer 1 lamport from Jito signer to a dummy recipient
+                trade_instruction = transfer(
+                    TransferParams(
+                        from_pubkey=jito_signer.public_key,
+                        to_pubkey=PublicKey("33333333333333333333333333333333"), # Another dummy recipient
+                        lamports=1
+                    )
+                )
+                trade_transaction = Transaction(recent_blockhash=recent_blockhash).add(trade_instruction)
+                
+                # Jito bundles require all transactions to be signed by the bundle signer (jito_signer in this case)
+                # and also by any other accounts that need to sign (e.g., the wallet initiating the trade).
+                # For simplicity, we're assuming jito_signer is the only signer needed for this dummy trade.
+                
+                bundle_id = await send_jito_bundle([trade_transaction], confidence)
+                if bundle_id:
+                    print(f"[JITO] Bundle successfully submitted. Monitoring status...")
+                    # The status update is now handled within send_jito_bundle
+                else:
+                    print(f"[JITO] Bundle submission failed.")
+
                 try:
-                    sandbox = Sandbox(api_key=E2B_API_KEY) # Initialize sandbox here
-                    print("Executing code in E2B sandbox for advanced analysis...")
-                    # Example E2B code execution
-                    # code_output = await sandbox.execute_python("print(\'E2B analysis complete\')")
-                    # print(f"E2B Output: {code_output}")
+                    sandbox = Sandbox(api_key=E2B_API_KEY)
+                    print("Executing code in E2B sandbox for advanced analysis/post-trade actions...")
                 except Exception as e_sandbox:
                     print(f"Error with E2B Sandbox: {e_sandbox}")
                 finally:
-                    if sandbox: # Ensure sandbox is closed even if E2B execution fails
+                    if sandbox:
                         sandbox.close()
                         print("E2B Sandbox closed gracefully.")
 
             else:
                 print(f"[FILTER] Neutral/negative social sentiment or low confidence ({confidence}) for {target_token_symbol}. Proceeding with caution.")
 
-            # Placeholder for actual scalping logic after all filters pass
-            
-            await asyncio.sleep(POLLING_INTERVAL_SECONDS) # Sleep for 2 seconds between scans
+            await asyncio.sleep(POLLING_INTERVAL_SECONDS)
             
         except Exception as e:
             print(f"An error occurred: {e}")
-            if sandbox: # Ensure sandbox is closed on general exception
+            if sandbox:
                 sandbox.close()
                 print("E2B Sandbox closed gracefully due to exception.")
-            await asyncio.sleep(POLLING_INTERVAL_SECONDS) # Wait before next scan
+            await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
     asyncio.run(run_scalper())

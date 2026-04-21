@@ -4,3 +4,4 @@ python-dotenv
 helius_sdk
 solana
 pythclient
+jito-searcher-client
