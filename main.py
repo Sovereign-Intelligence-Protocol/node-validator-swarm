@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 
 import httpx
 from solana.rpc.api import Client as SolanaClient
+from solana import transaction
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
-from solana.transaction import Transaction
 from solana.system_program import TransferParams, transfer
 
 # Load environment variables
@@ -123,7 +123,7 @@ async def check_gas_fees() -> float:
         result = await call_helius_rpc("getRecentBlockhash", [])
         if "result" in result:
             blockhash = result["result"]["value"]["blockhash"]
-            tx = Transaction()
+            tx = transaction.Transaction()
             tx.add(transfer(TransferParams(
                 from_pubkey=dummy_payer,
                 to_pubkey=dummy_payer,
@@ -355,7 +355,7 @@ async def run_scalper():
                 print("[TRADE] Preparing transaction for Jito bundle submission...")
                 
                 # Create a simple placeholder transaction
-                tx = Transaction()
+                tx = transaction.Transaction()
                 tx.add(transfer(TransferParams(
                     from_pubkey=jito_signer.pubkey(),
                     to_pubkey=PublicKey("11111111111111111111111111111111"),
