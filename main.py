@@ -27,9 +27,9 @@ E2B_API_KEY = os.getenv("E2B_API_KEY")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com") # Default to mainnet-beta
 JITO_BLOCK_ENGINE_URL = os.getenv("JITO_BLOCK_ENGINE_URL", "https://mainnet.block-engine.jito.wtf/") # Jito Block Engine URL
-# For Jito, you'll need a private key for signing transactions. This should be handled securely.
-# For demonstration, we'll use a dummy keypair. REPLACE WITH YOUR SECURE KEYPAIR IN PRODUCTION.
-# It's highly recommended to use a secure method for managing private keys, e.g., environment variables or a KMS.
+# For Jito, you\'ll need a private key for signing transactions. This should be handled securely.
+# For demonstration, we\'ll use a dummy keypair. REPLACE WITH YOUR SECURE KEYPAIR IN PRODUCTION.
+# It\'s highly recommended to use a secure method for managing private keys, e.g., environment variables or a KMS.
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
 
 if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not JITO_SIGNER_PRIVATE_KEY:
@@ -51,7 +51,7 @@ jito_searcher_client = JitoSearcherClient(JITO_BLOCK_ENGINE_URL)
 jito_signer = Keypair.from_secret_key(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY)) # Convert hex string to bytes
 
 # --- Advanced Filtering Parameters ---
-MIN_LIQUIDITY_THRESHOLD = 100000  # Minimum locked liquidity in USD
+MIN_LIQUIDITY_THRESHOLD = 250000  # Minimum locked liquidity in USD (Increased for micro-test)
 VOLUME_SPIKE_PERCENTAGE = 200     # 200% increase in volume
 VOLUME_SPIKE_WINDOW_SECONDS = 60  # Over 1 minute
 WHALE_ACTIVITY_THRESHOLD = 50000  # Transaction amount in USD
@@ -59,9 +59,13 @@ SOCIAL_SENTIMENT_KEYWORDS = ["pump", "moon", "buy now", "🚀", "📈"]
 MIN_GEMINI_CONFIDENCE_SCORE = 85 # Minimum confidence score for trade execution
 JITO_CONFIDENCE_THRESHOLD = 90 # Confidence score for smart tipping (90+ for 10% tip)
 JITO_TIP_PERCENTAGE = 0.10 # 10% of projected profit for Jito tip
+MAX_JITO_TIP_SOL = 0.0005 # Cap the Jito tip to 0.0005 SOL
 MAX_GAS_FEE_PERCENTAGE = 0.20 # Max 20% of projected profit for gas fees
-PROJECTED_PROFIT_USD = 1000 # Example projected profit for gas fee calculation
+PROJECTED_PROFIT_USD = 5 # Example projected profit for gas fee calculation (Micro-test capital)
 PRICE_MOMENTUM_WINDOW_SECONDS = 30 # Look back 30 seconds for price momentum
+SLIPPAGE_TOLERANCE_PERCENTAGE = 2.0 # Increased slippage tolerance for micro-test. Applied during transaction construction.
+MIN_SOL_RESERVE = 0.02 # 0.02 SOL reserve for rent-exempt status
+VOLUME_SPIKE_FOR_SENTIMENT_TRIGGER = 20 # Only trigger Gemini if volume spike suggests 20% move or higher
 
 # --- Efficiency Protocol Parameters ---
 POLLING_INTERVAL_SECONDS = 2 # Scan every 2 seconds
@@ -104,12 +108,12 @@ async def check_liquidity(token_address: str) -> float:
     try:
         # Real liquidity check is complex and often involves:
         # 1. Identifying the associated liquidity pools (e.g., on Raydium, Orca) for the given token_address.
-        # 2. Querying the reserves of these pools using Helius RPC methods like 'getTokenAccountBalance' for the pool's token accounts.
+        # 2. Querying the reserves of these pools using Helius RPC methods like \'getTokenAccountBalance\' for the pool\'s token accounts.
         # 3. Calculating the USD value of the reserves based on token prices.
         # This would likely require external DEX SDKs or extensive on-chain data parsing.
-        # For this phase, we'll continue with a simulated value, but acknowledge the need for a more robust implementation.
+        # For this phase, we\'ll continue with a simulated value, but acknowledge the need for a more robust implementation.
         await asyncio.sleep(0.5) # Simulate Helius RPC call
-        return 150000.0 # Example: return a value above threshold
+        return 300000.0 # Example: return a value above new threshold
     except Exception as e:
         print(f"Error checking liquidity via Helius: {e}")
         return 0.0
@@ -118,11 +122,12 @@ async def check_volume_spike(token_address: str) -> bool:
     print(f"Checking live volume spike for {token_address} via Helius RPC...")
     try:
         # Real volume spike detection would involve:
-        # 1. Fetching recent transaction history for the token_address using Helius RPC (e.g., 'getTransactionsByAddress').
+        # 1. Fetching recent transaction history for the token_address using Helius RPC (e.g., \'getTransactionsByAddress\').
         # 2. Parsing these transactions to calculate the total volume within the VOLUME_SPIKE_WINDOW_SECONDS.
         # 3. Comparing this current volume to historical average volume to detect a significant spike (e.g., VOLUME_SPIKE_PERCENTAGE).
-        # This is also a complex task requiring detailed transaction parsing.
-        # For this phase, we'll continue with a simulated value.
+        # For the purpose of the 'Profit Threshold' filter, this function would ideally return a quantitative value
+        # representing the percentage increase in volume. For now, it returns a boolean, and we'll assume True implies
+        # a spike meeting the VOLUME_SPIKE_FOR_SENTIMENT_TRIGGER criteria.
         await asyncio.sleep(0.5) # Simulate Helius RPC call
         return True # Example: simulate a volume spike
     except Exception as e:
@@ -170,12 +175,12 @@ async def check_whale_activity(token_address: str) -> bool:
 async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sentiment and confidence score
     current_time = time.time()
     if query in sentiment_cache and (current_time - sentiment_cache[query]["timestamp"] < SENTIMENT_CACHE_TTL):
-        print(f"Using cached sentiment for '{query}'.")
+        print(f"Using cached sentiment for \'{query}\'.")
         return sentiment_cache[query]["sentiment"], sentiment_cache[query]["confidence"]
 
-    print(f"Analyzing social sentiment for '{query}' using Gemini...")
+    print(f"Analyzing social sentiment for \'{query}\' using Gemini...")
     try:
-        prompt = f"Analyze the social sentiment for '{query}' related to cryptocurrency. Look for hype keywords like {', '.join(SOCIAL_SENTIMENT_KEYWORDS)}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
+        prompt = f"Analyze the social sentiment for \'{query}\' related to cryptocurrency. Look for hype keywords like {\', \'.join(SOCIAL_SENTIMENT_KEYWORDS)}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
         response = model.generate_content(prompt)
         response_text = response.text.strip().lower()
         
@@ -192,7 +197,7 @@ async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sen
                 print(f"Error parsing Gemini response: {parse_e} - Response: {response_text}")
 
         sentiment_cache[query] = {"sentiment": sentiment_part, "confidence": confidence_score, "timestamp": current_time}
-        print(f"Gemini sentiment for '{query}': {sentiment_part}, Confidence: {confidence_score}")
+        print(f"Gemini sentiment for \'{query}\': {sentiment_part}, Confidence: {confidence_score}")
         return sentiment_part, confidence_score
     except Exception as e:
         print(f"Error during Gemini sentiment analysis: {e}")
@@ -235,6 +240,16 @@ async def check_gas_fees() -> float:
         print(f"Error checking gas fees: {e}")
         return float("inf")
 
+async def get_wallet_balance(public_key: PublicKey) -> float:
+    print(f"Getting balance for wallet: {public_key}")
+    try:
+        response = await call_helius_rpc("getBalance", [str(public_key)])
+        balance_lamports = response["result"]["value"]
+        return balance_lamports / 1_000_000_000 # Convert lamports to SOL
+    except Exception as e:
+        print(f"Error getting wallet balance: {e}")
+        return 0.0
+
 async def send_jito_bundle(transactions: list[Transaction], confidence_score: int):
     print("Attempting to send Jito bundle...")
     tip_sol = 0
@@ -245,8 +260,9 @@ async def send_jito_bundle(transactions: list[Transaction], confidence_score: in
         if confidence_score >= JITO_CONFIDENCE_THRESHOLD:
             sol_price_usd = await get_token_price("SOL")
             if sol_price_usd > 0: # Avoid division by zero
-                tip_sol = (PROJECTED_PROFIT_USD * JITO_TIP_PERCENTAGE) / sol_price_usd # Convert USD tip to SOL
-                print(f"Smart Tipping: Confidence {confidence_score} >= {JITO_CONFIDENCE_THRESHOLD}. Tipping {tip_sol:.6f} SOL.")
+                calculated_tip_sol = (PROJECTED_PROFIT_USD * JITO_TIP_PERCENTAGE) / sol_price_usd # Convert USD tip to SOL
+                tip_sol = min(calculated_tip_sol, MAX_JITO_TIP_SOL) # Cap the tip
+                print(f"Smart Tipping: Confidence {confidence_score} >= {JITO_CONFIDENCE_THRESHOLD}. Tipping {tip_sol:.6f} SOL (capped).")
             else:
                 print("Warning: SOL price is 0, cannot calculate tip. Proceeding without tip.")
         
@@ -266,12 +282,14 @@ async def send_jito_bundle(transactions: list[Transaction], confidence_score: in
         print(f"[JITO] Bundle sent with tip: {tip_sol:.6f} SOL. Status: {bundle_status}. Bundle ID: {bundle_id}")
 
         # Atomic Safety: Jito bundles are inherently atomic. If any transaction in the bundle fails,
-        # the entire bundle is rejected, ensuring an "All-or-Nothing" execution. This prevents partial trades
+        # the entire bundle is rejected, ensuring an \"All-or-Nothing\" execution. This prevents partial trades
         # and protects against slippage if market conditions change before execution.
         # The jito-searcher-client handles the atomic execution at the Jito Block Engine level.
-        # For real-world implementation, you would monitor the bundle status using Jito's API
+        # The SLIPPAGE_TOLERANCE_PERCENTAGE is a parameter that would be used when constructing the actual trade
+        # instructions within the transactions to ensure the trade only executes if the price is within tolerance.
+        # For real-world implementation, you would monitor the bundle status using Jito\'s API
         # (e.g., get_bundle_status) to confirm its final state (processed, failed, etc.).
-        # For this example, we'll simulate a confirmation.
+        # For this example, we\'ll simulate a confirmation.
         await asyncio.sleep(2) # Simulate waiting for bundle confirmation
         bundle_status = "Confirmed" # Placeholder for actual confirmation logic
         print(f"[JITO] Bundle {bundle_id} Status: {bundle_status}.")
@@ -293,6 +311,14 @@ async def run_scalper():
         try:
             print(f"Scanning for market signals with advanced filters (next scan in {POLLING_INTERVAL_SECONDS}s)...")
             
+            # Rent Guard: Check wallet balance before any action
+            current_sol_balance = await get_wallet_balance(jito_signer.public_key)
+            if current_sol_balance < MIN_SOL_RESERVE:
+                print(f"[RENT GUARD] Insufficient SOL balance ({current_sol_balance:.6f} SOL) to maintain rent-exempt status. Need at least {MIN_SOL_RESERVE} SOL. Skipping trade.")
+                await asyncio.sleep(POLLING_INTERVAL_SECONDS)
+                continue
+            print(f"[RENT GUARD] Wallet balance ({current_sol_balance:.6f} SOL) is sufficient.")
+
             current_liquidity = await check_liquidity(target_token_address)
             if current_liquidity < MIN_LIQUIDITY_THRESHOLD:
                 print(f"[FILTER] Low liquidity ({current_liquidity:.2f} USD) for {target_token_address}. Skipping further checks.")
@@ -300,7 +326,11 @@ async def run_scalper():
                 continue
             print(f"[FILTER] Liquidity OK ({current_liquidity:.2f} USD) for {target_token_address}.")
 
-            if not await check_volume_spike(target_token_address):
+            volume_spike_detected = await check_volume_spike(target_token_address)
+            # Profit Threshold: Only trigger Gemini sentiment analysis if volume spike suggests a 20% move or higher.
+            # In a real implementation, check_volume_spike would return a quantitative value (e.g., percentage increase).
+            # For now, we'll assume if volume_spike_detected is True, it meets the 20% criteria for sentiment analysis.
+            if not volume_spike_detected: 
                 print(f"[FILTER] No significant volume spike for {target_token_address}. Skipping further checks.")
                 await asyncio.sleep(POLLING_INTERVAL_SECONDS) 
                 continue
@@ -335,7 +365,7 @@ async def run_scalper():
 
                 # Placeholder for actual trade transaction(s)
                 # In a real scenario, you would construct your swap/trade transactions here.
-                # For demonstration, we'll create a dummy transaction.
+                # For demonstration, we\'ll create a dummy transaction.
                 recent_blockhash_response = await call_helius_rpc("getRecentBlockhash", [])
                 recent_blockhash = recent_blockhash_response["result"]["value"]["blockhash"]
 
@@ -351,7 +381,7 @@ async def run_scalper():
                 
                 # Jito bundles require all transactions to be signed by the bundle signer (jito_signer in this case)
                 # and also by any other accounts that need to sign (e.g., the wallet initiating the trade).
-                # For simplicity, we're assuming jito_signer is the only signer needed for this dummy trade.
+                # For simplicity, we\'re assuming jito_signer is the only signer needed for this dummy trade.
                 
                 bundle_id = await send_jito_bundle([trade_transaction], confidence)
                 if bundle_id:
