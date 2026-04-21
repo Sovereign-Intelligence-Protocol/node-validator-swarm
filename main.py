@@ -12,13 +12,6 @@ from solana.rpc.api import Client as SolanaClient
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
 
-# Jito imports
-from jito_searcher_client.jito_searcher_client import JitoSearcherClient
-from jito_searcher_client.data_structures import Bundle, Transaction as JitoTransaction
-from pythclient.pythclient import PythClient
-from pythclient.solana import SolanaPythClient
-from pythclient.utils import get_key_from_env
-
 # Load environment variables
 load_dotenv()
 
@@ -40,10 +33,9 @@ GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemin
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Solana RPC client
-solana_client = SolanaClient(SOLANA_RPC_URL)
+solana_client = SolanaClient(HELIUS_RPC_URL)
 
-# Configure Jito Searcher Client
-jito_searcher_client = JitoSearcherClient(JITO_BLOCK_ENGINE_URL)
+# Configure Jito Signer
 jito_signer = Keypair.from_secret_key(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY))
 
 # --- Advanced Filtering Parameters ---

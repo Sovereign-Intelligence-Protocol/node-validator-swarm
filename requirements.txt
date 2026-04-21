@@ -1,4 +1,2 @@
 python-dotenv
-helius_sdk
-jito-searcher-client
 httpx
