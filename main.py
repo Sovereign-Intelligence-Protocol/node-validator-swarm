@@ -185,12 +185,13 @@ async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sen
     print(f"Analyzing social sentiment for \'{query}\' using Gemini API...")
     try:
         headers = {"Content-Type": "application/json"}
-        prompt = f"Analyze the social sentiment for \'{query}\' related to cryptocurrency. Look for hype keywords like {\', \'.join(SOCIAL_SENTIMENT_KEYWORDS)}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
+        keywords_str = ", ".join(SOCIAL_SENTIMENT_KEYWORDS)
+        prompt = f"Analyze the social sentiment for '{query}' related to cryptocurrency. Look for hype keywords like {keywords_str}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
         async with httpx.AsyncClient() as client:
             response = await client.post(GEMINI_API_URL, headers=headers, json=payload)
-            response.raise_for_status() # Raise an exception for HTTP errors
+            response.raise_for_status()  # Raise an exception for HTTP errors
             response_json = response.json()
             
             # Extract text from the response
@@ -209,7 +210,7 @@ async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sen
                     print(f"Error parsing Gemini response: {parse_e} - Response: {response_text}")
 
             sentiment_cache[query] = {"sentiment": sentiment_part, "confidence": confidence_score, "timestamp": current_time}
-            print(f"Gemini sentiment for \'{query}\'": {sentiment_part}, Confidence: {confidence_score})
+            print(f"Gemini sentiment for '{query}': {sentiment_part}, Confidence: {confidence_score}")
             return sentiment_part, confidence_score
     except httpx.HTTPStatusError as e:
         print(f"HTTP error during Gemini sentiment analysis: {e.response.status_code} - {e.response.text}")
@@ -320,10 +321,11 @@ async def send_jito_bundle(transactions: list, confidence_score: int):
         return None
 
 async def generate_trade_logic_with_gemini(current_market_data: dict) -> str:
-    prompt = f"Given the following market data: {json.dumps(current_market_data)}, generate Python code for a Solana trade execution. The code should define a function `execute_trade(jito_signer_private_key_hex, solana_rpc_url)` that returns a JSON string representing a list of serialized Solana Transaction objects (as hex strings). The trade should be for a \"Golden Opportunity\" and adhere to the following:
+    market_data_json = json.dumps(current_market_data)
+    prompt = f"""Given the following market data: {market_data_json}, generate Python code for a Solana trade execution. The code should define a function `execute_trade(jito_signer_private_key_hex, solana_rpc_url)` that returns a JSON string representing a list of serialized Solana Transaction objects (as hex strings). The trade should be for a 'Golden Opportunity' and adhere to the following:
     - Use the provided `jito_signer_private_key_hex` (hex string) to initialize a Keypair and `solana_rpc_url` to initialize a SolanaClient.
     - Include all necessary imports within the `execute_trade` function (e.g., `from solders.pubkey import Pubkey as PublicKey`, `from solders.keypair import Keypair`, `from solana.rpc.api import Client as SolanaClient`, `from solana.transaction import Transaction`, `from solana.system_program import TransferParams, transfer`).
-    - Include a dummy transfer of 1 lamport from the initialized `jito_signer.pubkey()` to a dummy recipient `PublicKey(\"33333333333333333333333333333333\")` as a placeholder for the actual trade.
+    - Include a dummy transfer of 1 lamport from the initialized `jito_signer.pubkey()` to a dummy recipient `PublicKey('33333333333333333333333333333333')` as a placeholder for the actual trade.
     - Ensure the transaction is signed by the initialized `jito_signer`.
     - The code should be self-contained within the `execute_trade` function.
     - Do NOT include any `async` or `await` keywords in the generated code.
@@ -332,7 +334,7 @@ async def generate_trade_logic_with_gemini(current_market_data: dict) -> str:
     - Do NOT include any comments.
     - The trade should implicitly respect a slippage tolerance of {SLIPPAGE_TOLERANCE_PERCENTAGE}% (this would be handled by the actual swap instruction, but for this placeholder, just acknowledge it).
     - Return a JSON string of a list of hex-serialized transaction bytes. Example: `json.dumps([tx.serialize().hex()])`.
-    "
+    """
     
     response = model.generate_content(prompt)
     trade_logic_code = response.text.strip()
@@ -359,7 +361,8 @@ async def run_scalper():
             
             # Rent Guard: Check wallet balance before any action
             if current_sol_balance < diary["min_sol_reserve"]:
-                print(f"[RENT GUARD] Insufficient SOL balance ({current_sol_balance:.6f} SOL) to maintain rent-exempt status. Need at least {diary["min_sol_reserve"]} SOL. Skipping trade.")
+                min_reserve = diary["min_sol_reserve"]
+                print(f"[RENT GUARD] Insufficient SOL balance ({current_sol_balance:.6f} SOL) to maintain rent-exempt status. Need at least {min_reserve} SOL. Skipping trade.")
                 await asyncio.sleep(POLLING_INTERVAL_SECONDS)
                 continue
             print(f"[RENT GUARD] Wallet balance ({current_sol_balance:.6f} SOL) is sufficient.")
