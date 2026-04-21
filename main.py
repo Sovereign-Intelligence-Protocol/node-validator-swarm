@@ -25,12 +25,12 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 E2B_API_KEY = os.getenv("E2B_API_KEY")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
-SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=e4fbf95c-a828-44ec-bfdb-07be33d18c03"
+SOLANA_RPC_URL_BASE = os.getenv("HELIUS_RPC_URL")
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/"
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
 
-if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not JITO_SIGNER_PRIVATE_KEY:
-    print("Error: GOOGLE_API_KEY, E2B_API_KEY, HELIUS_API_KEY, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
+if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not SOLANA_RPC_URL_BASE or not JITO_SIGNER_PRIVATE_KEY:
+    print("Error: GOOGLE_API_KEY, E2B_API_KEY, HELIUS_API_KEY, SOLANA_RPC_URL_BASE, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
     exit(1)
 
 # Configure Google Generative AI
@@ -38,7 +38,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # Configure Helius RPC client
-HELIUS_RPC_URL = f"https://rpc.helius.xyz/?api-key={HELIUS_API_KEY}"
+HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Solana RPC client
 solana_client = SolanaClient(SOLANA_RPC_URL)
