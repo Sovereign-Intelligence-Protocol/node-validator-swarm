@@ -1,3 +1,5 @@
+# CRITICAL FIX: Removed deprecated google.generativeai import - Using direct Gemini REST API
+# Deployment timestamp: 2026-04-21 08:05 PM
 import os
 import time
 import asyncio
