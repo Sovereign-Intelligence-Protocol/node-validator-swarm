@@ -2,3 +2,4 @@ python-dotenv
 httpx
 solana
 solders
+base58
