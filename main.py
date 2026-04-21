@@ -38,8 +38,14 @@ HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 solana_client = SolanaClient(HELIUS_RPC_URL)
 
 # Configure Jito Signer
-# Note: Jito signer initialization is deferred to avoid dependency issues
-jito_signer = None
+try:
+    # Use solders.keypair directly for consistency with current environment
+    from solders.keypair import Keypair as SoldersKeypair
+    jito_signer = SoldersKeypair.from_bytes(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY))
+    print(f"[SIGNER] Initialized successfully: {jito_signer.pubkey()}")
+except Exception as e:
+    print(f"Warning: Could not initialize Jito signer: {e}")
+    jito_signer = None
 
 # --- Advanced Filtering Parameters ---
 MIN_LIQUIDITY_THRESHOLD = 250000  # Minimum locked liquidity in USD (Increased for micro-test)
@@ -47,7 +53,7 @@ VOLUME_SPIKE_PERCENTAGE = 200     # 200% increase in volume
 VOLUME_SPIKE_WINDOW_SECONDS = 60  # Over 1 minute
 WHALE_ACTIVITY_THRESHOLD = 50000  # Transaction amount in USD
 SOCIAL_SENTIMENT_KEYWORDS = ["pump", "moon", "buy now", "🚀", "📈"]
-MIN_GEMINI_CONFIDENCE_SCORE = 90 # Minimum confidence score for trade execution (updated for active hunting)
+MIN_GEMINI_CONFIDENCE_SCORE = 85 # Minimum confidence score for trade execution (updated to 85 for Active Hunting)
 JITO_CONFIDENCE_THRESHOLD = 90 # Confidence score for smart tipping (90+ for 10% tip)
 JITO_TIP_PERCENTAGE = 0.10 # 10% of projected profit for Jito tip
 MAX_JITO_TIP_SOL = 0.0005 # Cap the Jito tip to 0.0005 SOL
