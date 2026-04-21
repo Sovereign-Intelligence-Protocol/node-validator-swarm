@@ -21,7 +21,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 async def run_scalper():
-    print("Cleo Scalper Bot Initialized...")
+    print("Lead Scalper Bot Initialized...")
     
     # Example logic for the scalper
     while True:

@@ -1,12 +1,12 @@
-# 🕵️‍♂️ NODE-VALIDATOR SWARM | INVISIBLE OPERATIONS
+# 🕵️‍♂️ LEAD SCALPER BOT | INVISIBLE OPERATIONS
 
-> **Status:** Operational | **Reality Bridge:** Active | **Protocol:** Node-Validator-V1
+> **Status:** Operational | **Reality Bridge:** Active | **Protocol:** Lead-Scalper-V1
 
-The **Node-Validator Swarm** is a professional-grade, autonomous lead generation engine designed for high-scale, decentralized data extraction. Operating under the **Invisible Operations** framework, this system utilizes a "Reality Bridge" to bridge decentralized node identifiers with real-world business data.
+The **Lead Scalper Bot** is a professional-grade, autonomous lead generation engine designed for high-scale, decentralized data extraction. Operating under the **Invisible Operations** framework, this system utilizes a "Reality Bridge" to bridge decentralized node identifiers with real-world business data.
 
 ## 🚀 Core Features
 
-- **Autonomous Swarm Engine**: Scrapes business leads (Roofers, Plumbers, HVAC) across the Top 50 US Cities.
+- **Autonomous Scalping Engine**: Scrapes business leads (Roofers, Plumbers, HVAC) across the Top 50 US Cities.
 - **Deep-Scrape Logic**: 3-page search depth per query using Playwright and Chromium.
 - **Reality Bridge Integration**: Uses `OPERATOR_NODE_ID` for fuel and `COLLECTOR_NODE_ID` for results destination.
 - **Dynamic Scaling**: Adjusts operation speed based on node activity and budget.
