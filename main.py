@@ -33,8 +33,8 @@ if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not SOLANA_RPC
     print("Error: GOOGLE_API_KEY, E2B_API_KEY, HELIUS_API_KEY, SOLANA_RPC_URL_BASE, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
     exit(1)
 
-# Configure Google Generative AI
-
+# Gemini API configuration
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
 
 # Configure Helius RPC client
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
@@ -180,14 +180,41 @@ async def analyze_social_sentiment(query: str) -> tuple[str, int]: # Returns sen
         print(f"Using cached sentiment for \'{query}\'.")
         return sentiment_cache[query]["sentiment"], sentiment_cache[query]["confidence"]
 
-    print(f"Simulating social sentiment for \'{query}\' (Gemini API bypassed)...")
-    await asyncio.sleep(0.1) # Simulate API call delay
-    # For simplicity, always return positive sentiment with high confidence for now
-    sentiment_part = "positive"
-    confidence_score = 95 # High confidence to trigger trades
-    sentiment_cache[query] = {"sentiment": sentiment_part, "confidence": confidence_score, "timestamp": current_time}
-    print(f"Simulated sentiment for \'{query}\'": {sentiment_part}, Confidence: {confidence_score})
-    return sentiment_part, confidence_score
+    print(f"Analyzing social sentiment for \'{query}\' using Gemini API...")
+    try:
+        headers = {"Content-Type": "application/json"}
+        prompt = f"Analyze the social sentiment for \'{query}\' related to cryptocurrency. Look for hype keywords like {\', \'.join(SOCIAL_SENTIMENT_KEYWORDS)}. Provide a sentiment (positive, neutral, negative) and a confidence score (1-100). Format your response as: Sentiment: [sentiment], Confidence: [score]."
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(GEMINI_API_URL, headers=headers, json=payload)
+            response.raise_for_status() # Raise an exception for HTTP errors
+            response_json = response.json()
+            
+            # Extract text from the response
+            response_text = response_json.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip().lower()
+
+            sentiment_part = "neutral"
+            confidence_score = 0
+
+            if "sentiment:" in response_text and "confidence:" in response_text:
+                try:
+                    sentiment_str = response_text.split("sentiment:")[1].split(",")[0].strip()
+                    confidence_str = response_text.split("confidence:")[1].split(".")[0].strip()
+                    sentiment_part = sentiment_str
+                    confidence_score = int(confidence_str)
+                except Exception as parse_e:
+                    print(f"Error parsing Gemini response: {parse_e} - Response: {response_text}")
+
+            sentiment_cache[query] = {"sentiment": sentiment_part, "confidence": confidence_score, "timestamp": current_time}
+            print(f"Gemini sentiment for \'{query}\'": {sentiment_part}, Confidence: {confidence_score})
+            return sentiment_part, confidence_score
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error during Gemini sentiment analysis: {e.response.status_code} - {e.response.text}")
+        return "neutral", 0 # Default to neutral on error with 0 confidence
+    except Exception as e:
+        print(f"Error during Gemini sentiment analysis: {e}")
+        return "neutral", 0 # Default to neutral on error with 0 confidence
 
 async def check_gas_fees() -> float:
     print("Checking current Solana network gas fees using Helius RPC...")
