@@ -25,8 +25,8 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 E2B_API_KEY = os.getenv("E2B_API_KEY")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
-SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com") # Default to mainnet-beta
-JITO_BLOCK_ENGINE_URL = os.getenv("JITO_BLOCK_ENGINE_URL", "https://mainnet.block-engine.jito.wtf/") # Jito Block Engine URL
+SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=e4fbf95c-a828-44ec-bfdb-07be33d18c03"
+JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/"
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
 
 if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not JITO_SIGNER_PRIVATE_KEY:
@@ -53,7 +53,7 @@ VOLUME_SPIKE_PERCENTAGE = 200     # 200% increase in volume
 VOLUME_SPIKE_WINDOW_SECONDS = 60  # Over 1 minute
 WHALE_ACTIVITY_THRESHOLD = 50000  # Transaction amount in USD
 SOCIAL_SENTIMENT_KEYWORDS = ["pump", "moon", "buy now", "🚀", "📈"]
-MIN_GEMINI_CONFIDENCE_SCORE = 85 # Minimum confidence score for trade execution
+MIN_GEMINI_CONFIDENCE_SCORE = 90 # Minimum confidence score for trade execution (updated for active hunting)
 JITO_CONFIDENCE_THRESHOLD = 90 # Confidence score for smart tipping (90+ for 10% tip)
 JITO_TIP_PERCENTAGE = 0.10 # 10% of projected profit for Jito tip
 MAX_JITO_TIP_SOL = 0.0005 # Cap the Jito tip to 0.0005 SOL
