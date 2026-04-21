@@ -41,12 +41,16 @@ solana_client = SolanaClient(HELIUS_RPC_URL)
 try:
     from solders.keypair import Keypair as SoldersKeypair
     # Handle both hex and base58 private key formats
-    if len(JITO_SIGNER_PRIVATE_KEY) > 64:
+    if JITO_SIGNER_PRIVATE_KEY.startswith("["):
+        # Assume JSON array format
+        key_list = json.loads(JITO_SIGNER_PRIVATE_KEY)
+        key_bytes = bytes(key_list)
+        jito_signer = SoldersKeypair.from_bytes(key_bytes)
+    else:
+        # Assume base58 format
         import base58
         key_bytes = base58.b58decode(JITO_SIGNER_PRIVATE_KEY)
         jito_signer = SoldersKeypair.from_bytes(key_bytes)
-    else:
-        jito_signer = SoldersKeypair.from_bytes(bytes.fromhex(JITO_SIGNER_PRIVATE_KEY))
     print(f"[SIGNER] Initialized successfully: {jito_signer.pubkey()}")
 except Exception as e:
     print(f"Warning: Could not initialize Jito signer: {e}")
