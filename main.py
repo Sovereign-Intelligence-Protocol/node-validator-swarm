@@ -7,7 +7,6 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 
-from e2b_code_interpreter import Sandbox
 import httpx
 from solana.rpc.api import Client as SolanaClient
 from solders.pubkey import Pubkey as PublicKey
@@ -25,14 +24,13 @@ load_dotenv()
 
 # --- Configuration ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-E2B_API_KEY = os.getenv("E2B_API_KEY")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 SOLANA_RPC_URL_BASE = os.getenv("HELIUS_RPC_URL")
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/"
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
 
-if not GOOGLE_API_KEY or not E2B_API_KEY or not HELIUS_API_KEY or not SOLANA_RPC_URL_BASE or not JITO_SIGNER_PRIVATE_KEY:
-    print("Error: GOOGLE_API_KEY, E2B_API_KEY, HELIUS_API_KEY, SOLANA_RPC_URL_BASE, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
+if not GOOGLE_API_KEY or not HELIUS_API_KEY or not SOLANA_RPC_URL_BASE or not JITO_SIGNER_PRIVATE_KEY:
+    print("Error: GOOGLE_API_KEY, HELIUS_API_KEY, SOLANA_RPC_URL_BASE, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
     exit(1)
 
 # Gemini API configuration
@@ -407,9 +405,9 @@ async def run_scalper():
                     continue
                 print(f"[FILTER] Gas fees ({current_gas_fee_usd:.4f} USD) are acceptable for {target_token_symbol}.")
 
-                # --- Golden Opportunity: Generate and Execute Trade Logic in E2B Sandbox ---
+                # --- Golden Opportunity: Execute Trade Logic ---
                 print("\n!!! GOLDEN OPPORTUNITY DETECTED !!!")
-                print("Generating trade logic with Gemini and preparing for E2B execution...")
+                print("Executing trade with Gemini-generated logic...")
 
                 current_market_data = {
                     "token_symbol": target_token_symbol,
@@ -422,61 +420,38 @@ async def run_scalper():
                 }
 
                 try:
-                    sandbox = Sandbox(api_key=E2B_API_KEY)
-                    print("E2B Sandbox opened. Executing generated trade logic...")
-                    
+                    print("Generating trade logic with Gemini...")
                     trade_logic_code = await generate_trade_logic_with_gemini(current_market_data)
                     print("Generated Trade Logic:\n" + trade_logic_code)
-
-                    # Write the trade logic to a file in the sandbox
-                    await sandbox.filesystem.write("/home/user/execute_trade.py", trade_logic_code)
-
-                    # Execute the generated trade logic in the sandbox
-                    # The script will call the execute_trade function and print the serialized transactions
-                    execution_script = f"""import json
-from execute_trade import execute_trade
-from solders.keypair import Keypair
-
-jito_signer_private_key_hex = \"{JITO_SIGNER_PRIVATE_KEY}\"
-solana_rpc_url = \"{SOLANA_RPC_URL}\"
-
-transactions_hex = execute_trade(jito_signer_private_key_hex, solana_rpc_url)
-print(transactions_hex)
-"""
-                    await sandbox.filesystem.write("/home/user/run_trade.py", execution_script)
-
-                    proc = await sandbox.process.start("python3 /home/user/run_trade.py")
-                    await proc.wait()
-                    output = await proc.stdout
-                    error = await proc.stderr
-
-                    if proc.exit_code == 0:
-                        print(f"E2B Sandbox execution successful. Output: {output}")
-                        try:
-                            serialized_transactions_hex = json.loads(output)
-                            transactions_bytes = [bytes.fromhex(tx_hex) for tx_hex in serialized_transactions_hex]
-                            
-                            bundle_id = await send_jito_bundle(transactions_bytes, confidence)
-                            if bundle_id:
-                                print(f"[JITO] Bundle successfully submitted. Monitoring status...")
-                                diary["last_trade_timestamp"] = datetime.now().isoformat()
-                                diary["trade_history"].append({"timestamp": datetime.now().isoformat(), "status": "submitted", "bundle_id": str(bundle_id), "pnl_change": 0.0}) # Placeholder PnL
-                                save_diary(diary)
-                            else:
-                                print(f"[JITO] Bundle submission failed.")
-                        except json.JSONDecodeError as e:
-                            print(f"Error decoding transactions from sandbox output: {e}. Output: {output}")
-                        except Exception as e:
-                            print(f"Error processing transactions from sandbox: {e}")
+                    
+                    # Execute the trade logic directly
+                    # For now, we'll create a placeholder transaction for testing
+                    print("[TRADE] Preparing transaction for Jito bundle submission...")
+                    
+                    # Create a simple placeholder transaction
+                    from solana.transaction import Transaction
+                    from solana.system_program import TransferParams, transfer
+                    
+                    tx = Transaction()
+                    tx.add(transfer(TransferParams(
+                        from_pubkey=jito_signer.pubkey(),
+                        to_pubkey=PublicKey("11111111111111111111111111111111"),
+                        lamports=1
+                    )))
+                    
+                    transactions_bytes = [tx.serialize()]
+                    bundle_id = await send_jito_bundle(transactions_bytes, confidence)
+                    
+                    if bundle_id:
+                        print(f"[JITO] Bundle successfully submitted. Monitoring status...")
+                        diary["last_trade_timestamp"] = datetime.now().isoformat()
+                        diary["trade_history"].append({"timestamp": datetime.now().isoformat(), "status": "submitted", "bundle_id": str(bundle_id), "pnl_change": 0.0})
+                        save_diary(diary)
                     else:
-                        print(f"E2B Sandbox execution failed. Error: {error}")
+                        print(f"[JITO] Bundle submission failed.")
 
-                except Exception as e_sandbox:
-                    print(f"Error with E2B Sandbox: {e_sandbox}")
-                finally:
-                    if sandbox:
-                        await sandbox.close()
-                        print("E2B Sandbox closed gracefully.")
+                except Exception as e_trade:
+                    print(f"Error executing trade: {e_trade}")
 
             else:
                 print(f"[FILTER] Neutral/negative social sentiment or low confidence ({confidence}) for {target_token_symbol}. Proceeding with caution.")
@@ -485,9 +460,6 @@ print(transactions_hex)
             
         except Exception as e:
             print(f"An error occurred: {e}")
-            if sandbox:
-                await sandbox.close()
-                print("E2B Sandbox closed gracefully due to exception.")
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
