@@ -338,47 +338,63 @@ async def run_scalper():
                 continue
             print(f"[FILTER] Gas fees ({current_gas_fee_usd:.4f} USD) are acceptable for {target_token_symbol}.")
 
-            # --- Golden Opportunity: Execute Trade Logic ---
-            print("\n!!! GOLDEN OPPORTUNITY DETECTED !!!")
-            print("Executing trade with Gemini-generated logic...")
-
+            # --- Market Analysis ---
             current_market_data = {
                 "token_symbol": target_token_symbol,
                 "token_address": target_token_address,
                 "current_liquidity": current_liquidity,
                 "current_sol_balance": current_sol_balance,
                 "current_gas_fee_usd": current_gas_fee_usd,
-                "sentiment_confidence": 95,
+                "sentiment_confidence": 0, # To be updated
                 "projected_profit_usd": PROJECTED_PROFIT_USD
             }
 
             try:
-                print("Generating trade logic with Gemini...")
-                trade_logic_code = await generate_trade_logic_with_gemini(current_market_data)
-                print("Generated Trade Logic:\n" + trade_logic_code)
+                # 1. Analyze sentiment first
+                sentiment, confidence = await analyze_social_sentiment(target_token_symbol)
+                current_market_data["sentiment_confidence"] = confidence
                 
-                # Execute the trade logic directly
-                print("[TRADE] Preparing transaction for Jito bundle submission...")
-                
-                # Create a mock transaction hex string for bundle submission
-                # In production, this would be a real signed transaction
-                mock_tx_hex = "01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-                transactions_bytes = [bytes.fromhex(mock_tx_hex)]
-                bundle_id = await send_jito_bundle(transactions_bytes, 95)
-                
-                if bundle_id:
-                    print(f"[JITO] Bundle successfully submitted. Monitoring status...")
-                    diary["last_trade_timestamp"] = datetime.now().isoformat()
-                    diary["trade_history"].append({"timestamp": datetime.now().isoformat(), "status": "submitted", "bundle_id": str(bundle_id), "pnl_change": 0.0})
-                    save_diary(diary)
+                if sentiment == "positive" and confidence >= MIN_GEMINI_CONFIDENCE_SCORE:
+                    print(f"\n!!! GOLDEN OPPORTUNITY DETECTED (Confidence: {confidence}) !!!")
+                    print("Generating trade logic with Gemini...")
+                    trade_logic_code = await generate_trade_logic_with_gemini(current_market_data)
+                    
+                    # 2. Execute the trade logic to get transaction hexes
+                    print("[TRADE] Preparing real transaction for Jito bundle submission...")
+                    local_vars = {}
+                    # Inject variables needed by Gemini's code
+                    exec(trade_logic_code, globals(), local_vars)
+                    
+                    if 'execute_trade' in local_vars:
+                        signer_hex = jito_signer.to_bytes().hex()
+                        tx_hex_json = local_vars['execute_trade'](signer_hex, HELIUS_RPC_URL)
+                        tx_hex_list = json.loads(tx_hex_json)
+                        
+                        transactions_bytes = [bytes.fromhex(tx_hex) for tx_hex in tx_hex_list]
+                        
+                        # 3. Submit to Jito
+                        bundle_id = await send_jito_bundle(transactions_bytes, confidence)
+                        
+                        if bundle_id:
+                            print(f"[JITO] Bundle successfully submitted. Monitoring status...")
+                            diary["last_trade_timestamp"] = datetime.now().isoformat()
+                            diary["trade_history"].append({
+                                "timestamp": datetime.now().isoformat(), 
+                                "token": target_token_address,
+                                "sentiment_score": confidence,
+                                "status": "submitted", 
+                                "bundle_id": str(bundle_id)
+                            })
+                            save_diary(diary)
+                        else:
+                            print(f"[JITO] Bundle submission failed.")
+                    else:
+                        print("[ERROR] Gemini code did not define 'execute_trade'.")
                 else:
-                    print(f"[JITO] Bundle submission failed.")
+                    print(f"[FILTER] Sentiment: {sentiment}, Confidence: {confidence}. Threshold: {MIN_GEMINI_CONFIDENCE_SCORE}. Skipping.")
 
             except Exception as e_trade:
                 print(f"Error executing trade: {e_trade}")
-
-            else:
-                print(f"[FILTER] Neutral/negative social sentiment or low confidence. Proceeding with caution.")
 
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
             
