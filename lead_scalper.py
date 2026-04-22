@@ -1,6 +1,7 @@
-# Lead Scalper Bot - Production Deployment (Ohio optimized)
-# Deployment timestamp: 2026-04-22 04:58 AM
-# Refactored: Definitive Jito signer initialization
+# Lead Scalper Bot - 'Institutional Predatory' Edition
+# Deployment timestamp: 2026-04-22 05:15 AM
+# Optimized for: Ohio (US East) Latency, Gemini AI Audit, Dynamic Jito Tipping
+
 import os
 import time
 import asyncio
@@ -27,7 +28,8 @@ HARDCODED_CONFIG = {
     "JITO_SIGNER_PRIVATE_KEY": "DfFBkgk9Lyy6SonLKhCafDUg7nhPiG92xCHV1JPgEWfBu3hhpDz1TVrFoafbwGei7zZB5Go34Wf97wZSdY1Pjvf",
     "SOLANA_WALLET_ADDRESS": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQnZ3",
     "CONFIDENCE_THRESHOLD": 0.85,
-    "JITO_TIP_AMOUNT": 0.001
+    "RUG_RISK_THRESHOLD": 15,
+    "BASE_JITO_TIP_SOL": 0.001
 }
 
 # Support multiple environment variable names
@@ -37,52 +39,44 @@ SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY") or HARDCODED_CONFIG["JITO_SIGNER_PRIVATE_KEY"]
 SOLANA_WALLET_ADDRESS = os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD") or HARDCODED_CONFIG["CONFIDENCE_THRESHOLD"])
-JITO_TIP_AMOUNT = float(os.getenv("JITO_TIP_AMOUNT") or HARDCODED_CONFIG["JITO_TIP_AMOUNT"])
+RUG_RISK_THRESHOLD = float(os.getenv("RUG_RISK_THRESHOLD") or HARDCODED_CONFIG["RUG_RISK_THRESHOLD"])
+BASE_JITO_TIP_SOL = float(os.getenv("BASE_JITO_TIP_SOL") or HARDCODED_CONFIG["BASE_JITO_TIP_SOL"])
 
+print(f"[BOOT] Institutional Predatory Mode Active")
 print(f"[BOOT] GOOGLE_API_KEY length: {len(GOOGLE_API_KEY)}")
 print(f"[BOOT] HELIUS_API_KEY length: {len(HELIUS_API_KEY)}")
 print(f"[BOOT] SOLANA_RPC_URL_BASE: {SOLANA_RPC_URL_BASE}")
 print(f"[BOOT] JITO_SIGNER_PRIVATE_KEY length: {len(JITO_SIGNER_PRIVATE_KEY)}")
 print(f"[BOOT] SOLANA_WALLET_ADDRESS: {SOLANA_WALLET_ADDRESS}")
-print(f"[BOOT] JITO_SIGNER_PRIVATE_KEY (at runtime): {JITO_SIGNER_PRIVATE_KEY[:5]}...{JITO_SIGNER_PRIVATE_KEY[-5:]}")
 
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Jito Signer
-print(f"[DEBUG] JITO_SIGNER_PRIVATE_KEY (raw from config): {JITO_SIGNER_PRIVATE_KEY[:10]}...{JITO_SIGNER_PRIVATE_KEY[-10:]}")
 jito_signer = None
 try:
     raw_key = JITO_SIGNER_PRIVATE_KEY.strip().strip("'").strip('"')
-    print(f"[DEBUG] JITO_SIGNER_PRIVATE_KEY (stripped): {raw_key[:10]}...{raw_key[-10:]}")
     if raw_key.startswith("["):
         key_bytes = bytes(json.loads(raw_key))
         jito_signer = Keypair.from_bytes(key_bytes)
     else:
         key_bytes = base58.b58decode(raw_key)
-        print(f"[DEBUG] Decoded key_bytes length: {len(key_bytes)}")
         if len(key_bytes) == 64:
             jito_signer = Keypair.from_bytes(key_bytes)
         elif len(key_bytes) == 32:
             jito_signer = Keypair.from_seed(key_bytes)
         else:
-            raise ValueError(f"Invalid key length: {len(key_bytes)} bytes. Raw key: {raw_key[:10]}...{raw_key[-10:]}")
+            raise ValueError(f"Invalid key length: {len(key_bytes)} bytes.")
     
     if jito_signer:
-        print(f"[SIGNER] Jito signer initialized successfully: {jito_signer.pubkey()}")
+        print(f"[SIGNER] Jito signer initialized: {jito_signer.pubkey()}")
 except Exception as e:
-    print(f"[DEBUG] Exception type: {type(e).__name__}")
-    print(f"[DEBUG] Exception details: {e}")
     print(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
 
 # --- Advanced Filtering Parameters ---
-MIN_LIQUIDITY_THRESHOLD = 250000
-MIN_GEMINI_CONFIDENCE_SCORE = int(CONFIDENCE_THRESHOLD * 100)
 POLLING_INTERVAL_SECONDS = 2
 MIN_SOL_RESERVE = 0.02
-MAX_JITO_TIP_SOL = JITO_TIP_AMOUNT
-sentiment_cache = {}
 
 async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
@@ -94,59 +88,91 @@ async def call_helius_rpc(method: str, params: list) -> dict:
 
 async def get_wallet_balance() -> float:
     if not jito_signer:
-        print("[WALLET] Jito signer is None. Cannot fetch balance.")
         return 0.0
     try:
         pubkey_str = str(jito_signer.pubkey())
-        print(f"[WALLET] Fetching balance for {pubkey_str}...")
         result = await call_helius_rpc("getBalance", [pubkey_str])
         if "result" in result:
-            balance_sol = result["result"]["value"] / 1e9
-            print(f"[WALLET] Current Balance: {balance_sol:.9f} SOL")
-            return balance_sol
+            return result["result"]["value"] / 1e9
     except Exception as e:
-        print(f"[DEBUG] Exception type: {type(e).__name__}")
-        print(f"[DEBUG] Exception details: {e}")
         print(f"Error getting wallet balance: {e}")
     return 0.0
 
-async def analyze_social_sentiment(query: str) -> tuple:
+async def perform_high_conviction_audit(token_address: str) -> dict:
+    """
+    Institutional Predatory Audit:
+    - Developer History Analysis
+    - Holder Concentration Check
+    - LP Burn Verification
+    """
     try:
         headers = {"Content-Type": "application/json"}
-        prompt = f"Analyze crypto token '{query}' for sentiment and rug risk. Provide Sentiment (positive/neutral/negative), Confidence (1-100), and Risk of Rug (0-100%)."
+        prompt = (
+            f"Perform a high-conviction audit for Solana token: {token_address}\n"
+            f"Analyze for: \n"
+            f"1. Developer History (Are they known for rugs?)\n"
+            f"2. Holder Concentration (Is it whale-heavy?)\n"
+            f"3. LP Burn Status (Is liquidity locked/burned?)\n"
+            f"Output MUST be in JSON format: "
+            f"{{\"confidence\": 0.0-1.0, \"rug_risk\": 0-100, \"sentiment\": \"positive/neutral/negative\", \"reasoning\": \"...\"}}"
+        )
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         async with httpx.AsyncClient() as client:
             response = await client.post(GEMINI_API_URL, headers=headers, json=payload)
             response.raise_for_status()
-            text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").lower()
+            raw_text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
             
-            sentiment = "positive" if "positive" in text else "negative" if "negative" in text else "neutral"
-            confidence = 0
-            match = re.search(r"confidence:\s*(\d+)", text)
-            if match: confidence = int(match.group(1))
-            
-            return sentiment, confidence
-    except:
-        return "neutral", 0
+            # Extract JSON from markdown if necessary
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
+            return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}
+    except Exception as e:
+        print(f"[AUDIT ERROR] {e}")
+        return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}
+
+def calculate_dynamic_jito_tip(confidence: float) -> float:
+    """
+    Dynamic Jito Tipping:
+    - Base Tip: 0.001 SOL
+    - High Confidence (>= 0.95): +50% increase (0.0015 SOL)
+    """
+    tip = BASE_JITO_TIP_SOL
+    if confidence >= 0.95:
+        tip *= 1.5
+        print(f"[DYNAMIC TIP] High Confidence detected ({confidence}). Increasing tip to {tip:.4f} SOL.")
+    return tip
 
 async def run_scalper():
-    print("Lead Scalper Bot Initializing...")
+    print("Lead Scalper Bot: Institutional Predatory Mode Initializing...")
     while True:
         try:
             balance = await get_wallet_balance()
-            if balance >= MIN_SOL_RESERVE:
-                print("Bot initialized and Rent Guard PASSED")
-                sentiment, confidence = await analyze_social_sentiment("SOL")
-                if sentiment == "positive" and confidence >= MIN_GEMINI_CONFIDENCE_SCORE:
-                    print(f"!!! GOLDEN OPPORTUNITY (Confidence: {confidence}) !!!")
-            else:
+            if balance < MIN_SOL_RESERVE:
                 print(f"[RENT GUARD] Insufficient SOL ({balance:.6f}). Need {MIN_SOL_RESERVE}. Skipping.")
+                await asyncio.sleep(POLLING_INTERVAL_SECONDS)
+                continue
+
+            # Simulate finding a token for audit (replace with real stream in production)
+            mock_token = "So11111111111111111111111111111111111111112" 
+            
+            audit_result = await perform_high_conviction_audit(mock_token)
+            confidence = audit_result.get("confidence", 0)
+            rug_risk = audit_result.get("rug_risk", 100)
+            
+            print(f"[AUDIT] Token: {mock_token[:8]}... | Confidence: {confidence:.2f} | Rug Risk: {rug_risk}%")
+            
+            if confidence > CONFIDENCE_THRESHOLD and rug_risk < RUG_RISK_THRESHOLD:
+                print(f"!!! PREDATORY OPPORTUNITY IDENTIFIED !!!")
+                tip_amount = calculate_dynamic_jito_tip(confidence)
+                print(f"[EXECUTION] Preparing trade with Jito Tip: {tip_amount:.4f} SOL")
+                # Trade execution logic would go here
+            else:
+                print(f"[FILTER] Criteria not met. Confidence > {CONFIDENCE_THRESHOLD} and Rug Risk < {RUG_RISK_THRESHOLD}% required.")
 
             print(f"Scanning... (next in {POLLING_INTERVAL_SECONDS}s)")
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
         except Exception as e:
-            print(f"[DEBUG] Exception type: {type(e).__name__}")
-            print(f"[DEBUG] Exception details: {e}")
             print(f"Loop Error: {e}")
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
