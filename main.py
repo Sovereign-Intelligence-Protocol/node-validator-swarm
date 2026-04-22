@@ -149,7 +149,8 @@ async def analyze_social_sentiment(query: str) -> tuple:
         return sentiment_cache[query]["sentiment"], sentiment_cache[query]["confidence"]
 
     try:
-        headers = {"Content-Type": "application/json"},            prompt = f"""Analyze the following crypto token for sentiment and potential \"rug pull\" risk.k.
+      headers = {"Content-Type": "application/json"}
+        prompt = f"""Analyze the following crypto token for sentiment and potential \"rug pull\" risk.
             Token: '{query}'
 
             Evaluate these factors:
