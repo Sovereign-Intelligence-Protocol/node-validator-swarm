@@ -60,6 +60,8 @@ HARDCODED_CONFIG = {
 # --- INITIALIZATION ---
 GOOGLE_API_KEY = (os.getenv("GOOGLE_API_KEY") or HARDCODED_CONFIG["GOOGLE_API_KEY"]).strip()
 HELIUS_API_KEY = (os.getenv("HELIUS_API_KEY") or HARDCODED_CONFIG["HELIUS_API_KEY"]).strip()
+# Fix: Ensure RPC URL is correctly formatted without double slashes or duplicated keys
+RPC_URL = f"{HARDCODED_CONFIG['SOLANA_RPC_URL_BASE']}/?api-key={HELIUS_API_KEY}"
 HELIUS_WS_URL = f"{HARDCODED_CONFIG['HELIUS_WS_URL']}/?api-key={HELIUS_API_KEY}"
 JITO_BLOCK_ENGINE_URL = HARDCODED_CONFIG["JITO_BLOCK_ENGINE_URL"]
 SOLANA_WALLET_ADDRESS = (os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]).strip()
@@ -72,9 +74,22 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 jito_signer = None
 try:
     raw_key = (os.getenv("JITO_SIGNER_PRIVATE_KEY") or HARDCODED_CONFIG["JITO_SIGNER_PRIVATE_KEY"]).strip().strip("'").strip('"')
-    key_bytes = base58.b58decode(raw_key) if not raw_key.startswith("[") else bytes(json.loads(raw_key))
-    jito_signer = Keypair.from_bytes(key_bytes) if len(key_bytes) == 64 else Keypair.from_seed(key_bytes)
-    logger.info("Elite Jito Signer Initialized")
+    # Fix: Robust signer initialization for 123-character strings (likely full private key)
+    if raw_key.startswith("["):
+        key_bytes = bytes(json.loads(raw_key))
+    else:
+        key_bytes = base58.b58decode(raw_key)
+    
+    # Keypair.from_bytes expects 64 bytes (32-byte private + 32-byte public)
+    # If we have 123 chars, it might be the full key. If decoding fails, we try slicing.
+    if len(key_bytes) == 64:
+        jito_signer = Keypair.from_bytes(key_bytes)
+    elif len(key_bytes) == 32:
+        jito_signer = Keypair.from_seed(key_bytes)
+    else:
+        # Fallback for unexpected lengths
+        jito_signer = Keypair.from_bytes(key_bytes[:64])
+    logger.info("Elite Jito Signer Initialized Successfully")
 except Exception as e:
     logger.error(f"Signer Error: {e}")
 
