@@ -149,7 +149,7 @@ async def analyze_social_sentiment(query: str) -> tuple:
         return sentiment_cache[query]["sentiment"], sentiment_cache[query]["confidence"]
 
     try:
-      headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json"}
         prompt = f"""Analyze the following crypto token for sentiment and potential \"rug pull\" risk.
             Token: '{query}'
 
@@ -195,7 +195,7 @@ async def analyze_social_sentiment(query: str) -> tuple:
     except:
         return "neutral", 0
 
-async def send_jito_bundle(transactions: list, confidence_score: int):
+async def send_jito_bundle(transactions: list, confidence_score: int, jito_tip_sol: float = MAX_JITO_TIP_SOL):
     print("[JITO] Submitting bundle...")
     try:
         import base64
@@ -247,7 +247,14 @@ async def run_scalper():
                         if 'execute_trade' in local_vars:
                             tx_json = local_vars['execute_trade'](jito_signer.to_bytes().hex(), HELIUS_RPC_URL)
                             tx_bytes = [bytes.fromhex(tx) for tx in json.loads(tx_json)]
-                            await send_jito_bundle(tx_bytes, confidence)
+
+                            # Dynamic Jito Tipping Logic
+                            current_jito_tip_sol = MAX_JITO_TIP_SOL
+                            if confidence >= 95:
+                                current_jito_tip_sol *= 1.5  # Increase tip by 50% for high-confidence trades
+                                print(f"[JITO] Increasing tip to {current_jito_tip_sol:.6f} SOL for high-confidence trade (Confidence: {confidence}).")
+
+                            await send_jito_bundle(tx_bytes, confidence, current_jito_tip_sol)
             else:
                 print(f"[RENT GUARD] Insufficient SOL ({balance:.6f}). Need {MIN_SOL_RESERVE}. Skipping.")
 
