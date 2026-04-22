@@ -35,6 +35,10 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or H
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") or HARDCODED_CONFIG["HELIUS_API_KEY"]
 SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL") or HARDCODED_CONFIG["SOLANA_RPC_URL_BASE"]
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY") or HARDCODED_CONFIG["JITO_SIGNER_PRIVATE_KEY"]
+SOLANA_WALLET_ADDRESS = os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD") or HARDCODED_CONFIG["CONFIDENCE_THRESHOLD"])
+JITO_TIP_AMOUNT = float(os.getenv("JITO_TIP_AMOUNT") or HARDCODED_CONFIG["JITO_TIP_AMOUNT"])
+
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 
 # Gemini API configuration
@@ -64,26 +68,29 @@ try:
     else:
         # Handle Base58 format
         key_bytes = base58.b58decode(raw_key)
+        # Base58 decoded key can be 32 bytes for a seed or 64 bytes for a full keypair
         if len(key_bytes) == 32:
             jito_signer = SoldersKeypair.from_seed(key_bytes)
-        else:
+        elif len(key_bytes) == 64:
             jito_signer = SoldersKeypair.from_bytes(key_bytes)
+        else:
+            raise ValueError(f"Invalid Jito signer private key length: {len(key_bytes)} bytes")
     
-    print(f"[SIGNER] Initialized successfully: {jito_signer.pubkey()}")
+    print(f"[SIGNER] Jito signer initialized successfully: {jito_signer.pubkey()}")
 except Exception as e:
-    print(f"CRITICAL ERROR: Could not initialize Jito signer: {e}")
+    print(f"CRITICAL ERROR: Could not initialize Jito signer from provided key: {e}")
     jito_signer = None
 
 # --- Advanced Filtering Parameters ---
 MIN_LIQUIDITY_THRESHOLD = 250000
-MIN_GEMINI_CONFIDENCE_SCORE = int(float(os.getenv("CONFIDENCE_THRESHOLD") or HARDCODED_CONFIG["CONFIDENCE_THRESHOLD"]) * 100)
+MIN_GEMINI_CONFIDENCE_SCORE = int(CONFIDENCE_THRESHOLD * 100)
 POLLING_INTERVAL_SECONDS = 2
 MIN_SOL_RESERVE = 0.02
 PROJECTED_PROFIT_USD = 5
 MAX_GAS_FEE_PERCENTAGE = 0.20
 JITO_CONFIDENCE_THRESHOLD = 90
 JITO_TIP_PERCENTAGE = 0.10
-MAX_JITO_TIP_SOL = float(os.getenv("JITO_TIP_AMOUNT") or HARDCODED_CONFIG["JITO_TIP_AMOUNT"])
+MAX_JITO_TIP_SOL = JITO_TIP_AMOUNT
 SENTIMENT_CACHE_TTL = 300
 sentiment_cache = {}
 
@@ -119,7 +126,7 @@ async def analyze_social_sentiment(query: str) -> tuple:
     try:
         headers = {"Content-Type": "application/json"}
         prompt = f"""Analyze the following crypto token for sentiment and potential \"rug pull\" risk.
-        Token: '{query}'
+        Token: \'{query}\'
 
         Evaluate these factors:
         1.  **Developer Wallet History:** Look for signs of high-velocity failed launches or suspicious past projects by the same developer.
@@ -165,7 +172,7 @@ async def send_jito_bundle(transactions: list, confidence_score: int, jito_tip_s
     print("[JITO] Submitting bundle...")
     try:
         import base64
-        tx_list = [base64.b64encode(tx).decode('utf-8') for tx in transactions]
+        tx_list = [base64.b64encode(tx).decode("utf-8") for tx in transactions]
         payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [tx_list]}
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(JITO_BLOCK_ENGINE_URL, json=payload)
@@ -209,4 +216,4 @@ async def run_scalper():
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
-    asyncio.run(run_scalper())
+    asyncio.run(run_scalper()))
