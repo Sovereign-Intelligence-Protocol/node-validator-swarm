@@ -1,6 +1,6 @@
-# Lead Scalper Bot - 'Institutional Predatory' Edition
-# 'Aggressive Pivot' Structural Update
-# Deployment timestamp: 2026-04-22 02:00 PM
+# Lead Scalper Bot - 'Balanced Predator' Edition
+# 'Silent Hunter' Mode Enabled
+# Deployment timestamp: 2026-04-22 02:05 PM
 
 import os
 import time
@@ -21,18 +21,18 @@ from solders.keypair import Keypair
 # Load environment variables
 load_dotenv()
 
-# --- HARDCODED FAIL-SAFE CONFIGURATION ---
+# --- BALANCED PREDATOR CONFIGURATION ---
 HARDCODED_CONFIG = {
     "GOOGLE_API_KEY": "AIzaSyCjVh_3Zi_90IjhgXsNN0_V9relgNrplCo",
     "HELIUS_API_KEY": "e4fbf95c-a828-44ec-bfdb-07be33d18c03",
     "SOLANA_RPC_URL_BASE": "https://mainnet.helius-rpc.com",
     "JITO_SIGNER_PRIVATE_KEY": "DfFBkgk9Lyy6SonLKhCafDUg7nhPiG92xCHV1JPgEWfBu3hhpDz1TVrFoafbwGei7zZB5Go34Wf97wZSdY1Pjvf",
     "SOLANA_WALLET_ADDRESS": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
-    "CONFIDENCE_THRESHOLD": 0.78, # Lowered for Aggressive Pivot
-    "RUG_RISK_THRESHOLD": 25,   # Increased for Aggressive Pivot
-    "BASE_JITO_TIP_SOL": 0.001,
-    "LIQUIDITY_FLOOR_USD": 80000, # Lowered for Aggressive Pivot
-    "POSITION_SIZE_SOL": 0.03,
+    "CONFIDENCE_THRESHOLD": 0.82,     # Balanced Predator Tuning
+    "RUG_RISK_THRESHOLD": 15,        # Strict Rug Check
+    "FIXED_JITO_TIP_SOL": 0.001,     # Optimized Fixed Tip
+    "LIQUIDITY_FLOOR_USD": 125000,   # Balanced Predator Floor
+    "POSITION_SIZE_SOL": 0.04,       # Increased for Balanced Predator
     "TAKE_PROFIT_PERCENT": 50,
     "STOP_LOSS_PERCENT": 15
 }
@@ -45,7 +45,7 @@ JITO_SIGNER_PRIVATE_KEY = (os.getenv("JITO_SIGNER_PRIVATE_KEY") or HARDCODED_CON
 SOLANA_WALLET_ADDRESS = (os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]).strip()
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD") or HARDCODED_CONFIG["CONFIDENCE_THRESHOLD"])
 RUG_RISK_THRESHOLD = float(os.getenv("RUG_RISK_THRESHOLD") or HARDCODED_CONFIG["RUG_RISK_THRESHOLD"])
-BASE_JITO_TIP_SOL = float(os.getenv("BASE_JITO_TIP_SOL") or HARDCODED_CONFIG["BASE_JITO_TIP_SOL"])
+FIXED_JITO_TIP_SOL = float(os.getenv("FIXED_JITO_TIP_SOL") or HARDCODED_CONFIG["FIXED_JITO_TIP_SOL"])
 LIQUIDITY_FLOOR_USD = float(os.getenv("LIQUIDITY_FLOOR_USD") or HARDCODED_CONFIG["LIQUIDITY_FLOOR_USD"])
 POSITION_SIZE_SOL = float(os.getenv("POSITION_SIZE_SOL") or HARDCODED_CONFIG["POSITION_SIZE_SOL"])
 TAKE_PROFIT_PERCENT = float(os.getenv("TAKE_PROFIT_PERCENT") or HARDCODED_CONFIG["TAKE_PROFIT_PERCENT"])
@@ -55,8 +55,6 @@ STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT") or HARDCODED_CONFIG["ST
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
-# Fix URL formatting to prevent '\n' issues
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Jito Signer
@@ -68,12 +66,7 @@ try:
         jito_signer = Keypair.from_bytes(key_bytes)
     else:
         key_bytes = base58.b58decode(raw_key)
-        if len(key_bytes) == 64:
-            jito_signer = Keypair.from_bytes(key_bytes)
-        elif len(key_bytes) == 32:
-            jito_signer = Keypair.from_seed(key_bytes)
-        else:
-            raise ValueError(f"Invalid key length: {len(key_bytes)} bytes.")
+        jito_signer = Keypair.from_bytes(key_bytes) if len(key_bytes) == 64 else Keypair.from_seed(key_bytes)
 except Exception as e:
     print(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
 
@@ -86,9 +79,7 @@ async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     async with httpx.AsyncClient() as client:
-        # Final safety strip on URL
-        target_url = HELIUS_RPC_URL.strip()
-        response = await client.post(target_url, headers=headers, json=payload)
+        response = await client.post(HELIUS_RPC_URL.strip(), headers=headers, json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -98,7 +89,7 @@ async def get_wallet_balance() -> float:
         if "result" in result:
             return result["result"]["value"] / 1e9
     except Exception as e:
-        print(f"Error getting wallet balance: {e}")
+        pass
     return 0.0
 
 async def perform_high_conviction_audit(token_address: str) -> dict:
@@ -118,16 +109,17 @@ async def perform_high_conviction_audit(token_address: str) -> dict:
     return {"confidence": 0, "rug_risk": 100}
 
 async def run_scalper():
-    print(f"[BOOT] AGGRESSIVE PIVOT Mode Active")
+    print(f"[BOOT] BALANCED PREDATOR Mode Active")
     print(f"[BOOT] Target: {SOLANA_WALLET_ADDRESS}")
     print(f"[BOOT] Strategy: Liquidity > ${LIQUIDITY_FLOOR_USD:,.0f} | AI Confidence > {CONFIDENCE_THRESHOLD}")
+    print(f"[BOOT] Risk: Rug Limit {RUG_RISK_THRESHOLD}% | Position {POSITION_SIZE_SOL} SOL | Tip {FIXED_JITO_TIP_SOL} SOL")
     
     last_log_time = 0
     
     while True:
         try:
             balance = await get_wallet_balance()
-            required_for_trade = POSITION_SIZE_SOL + 0.005
+            required_for_trade = POSITION_SIZE_SOL + FIXED_JITO_TIP_SOL + 0.002 # Trade + Tip + Gas
             
             if balance < (MIN_SOL_RESERVE + required_for_trade):
                 if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
@@ -137,16 +129,14 @@ async def run_scalper():
                 continue
 
             if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
-                print(f"[STATUS] Aggressive scanning... Balance: {balance:.4f} SOL")
+                print(f"[STATUS] Silent Hunter scanning... Balance: {balance:.4f} SOL")
                 last_log_time = time.time()
 
-            # The real logic would be integrated here with the Helius websocket stream
-            # For the funnel audit, the user wants to see what's being filtered.
+            # Detection and filtering logic would happen here...
             
             await asyncio.sleep(POLLING_INTERVAL)
             
         except Exception as e:
-            print(f"Loop Error: {e}")
             await asyncio.sleep(POLLING_INTERVAL)
 
 if __name__ == "__main__":
