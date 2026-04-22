@@ -149,15 +149,28 @@ async def analyze_social_sentiment(query: str) -> tuple:
         return sentiment_cache[query]["sentiment"], sentiment_cache[query]["confidence"]
 
     try:
-        headers = {"Content-Type": "application/json"}
-        prompt = f"Analyze sentiment for '{query}' in crypto. Look for {SOCIAL_SENTIMENT_KEYWORDS}. Format: Sentiment: [positive/neutral/negative], Confidence: [1-100]."
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        headers = {"Content-Type": "application/json"            prompt = f"""Analyze the following crypto token for sentiment and potential \"rug pull\" risk.
+            Token: '{query}'
+
+            Evaluate these factors:
+            1.  **Developer Wallet History:** Look for signs of high-velocity failed launches or suspicious past projects by the same developer.
+            2.  **Holder Concentration:** Determine if the top 10 holders control more than 30% of the supply.
+            3.  **LP Burn Status:** Is the liquidity pool locked or burned? (Crucial for preventing rug pulls).
+
+            Based on this analysis, provide:
+            -   **Sentiment:** [positive/neutral/negative]
+            -   **Confidence:** [1-100, reflecting overall positive sentiment and low risk]
+            -   **Risk of Rug:** [0-100%, based on developer history, holder concentration, and LP burn status]
+
+            Example Format:
+            Sentiment: positive, Confidence: 92, Risk of Rug: 5%
+            """     payload = {"contents": [{"parts": [{"text": prompt}]}]}
         async with httpx.AsyncClient() as client:
             response = await client.post(GEMINI_API_URL, headers=headers, json=payload)
             response.raise_for_status()
             text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").lower()
             
-            sentiment, confidence = "neutral", 0
+            sentiment, confidence, rug_risk = "neutral", 0, 100
             if "positive" in text: sentiment = "positive"
             elif "negative" in text: sentiment = "negative"
             
@@ -165,8 +178,17 @@ async def analyze_social_sentiment(query: str) -> tuple:
                 import re
                 match = re.search(r"confidence:\s*(\d+)", text)
                 if match: confidence = int(match.group(1))
+
+                match_rug = re.search(r"risk of rug:\s*(\d+)%", text)
+                if match_rug: rug_risk = int(match_rug.group(1))
+
             except: pass
-            
+
+            # Apply rug risk filter
+            if rug_risk > 15:
+                print(f"[GEMINI] High rug risk detected ({rug_risk}%). Setting confidence to 0.")
+                confidence = 0
+
             sentiment_cache[query] = {"sentiment": sentiment, "confidence": confidence, "timestamp": current_time}
             return sentiment, confidence
     except:
