@@ -216,4 +216,4 @@ async def run_scalper():
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
-    asyncio.run(run_scalper()))
+    asyncio.run(run_scalper())
