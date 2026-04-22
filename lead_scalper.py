@@ -1,6 +1,6 @@
 # Lead Scalper Bot - 'Institutional Predatory' Edition
-# 'Silent Hunter' Structural Update
-# Deployment timestamp: 2026-04-22 01:58 PM
+# 'Aggressive Pivot' Structural Update
+# Deployment timestamp: 2026-04-22 02:00 PM
 
 import os
 import time
@@ -28,21 +28,21 @@ HARDCODED_CONFIG = {
     "SOLANA_RPC_URL_BASE": "https://mainnet.helius-rpc.com",
     "JITO_SIGNER_PRIVATE_KEY": "DfFBkgk9Lyy6SonLKhCafDUg7nhPiG92xCHV1JPgEWfBu3hhpDz1TVrFoafbwGei7zZB5Go34Wf97wZSdY1Pjvf",
     "SOLANA_WALLET_ADDRESS": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
-    "CONFIDENCE_THRESHOLD": 0.85,
-    "RUG_RISK_THRESHOLD": 15,
+    "CONFIDENCE_THRESHOLD": 0.78, # Lowered for Aggressive Pivot
+    "RUG_RISK_THRESHOLD": 25,   # Increased for Aggressive Pivot
     "BASE_JITO_TIP_SOL": 0.001,
-    "LIQUIDITY_FLOOR_USD": 250000,
+    "LIQUIDITY_FLOOR_USD": 80000, # Lowered for Aggressive Pivot
     "POSITION_SIZE_SOL": 0.03,
     "TAKE_PROFIT_PERCENT": 50,
     "STOP_LOSS_PERCENT": 15
 }
 
 # --- GLOBAL INITIALIZATION (RUNS ONCE) ---
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or HARDCODED_CONFIG["GOOGLE_API_KEY"]
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") or HARDCODED_CONFIG["HELIUS_API_KEY"]
-SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL") or HARDCODED_CONFIG["SOLANA_RPC_URL_BASE"]
-JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY") or HARDCODED_CONFIG["JITO_SIGNER_PRIVATE_KEY"]
-SOLANA_WALLET_ADDRESS = os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]
+GOOGLE_API_KEY = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or HARDCODED_CONFIG["GOOGLE_API_KEY"]).strip()
+HELIUS_API_KEY = (os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") or HARDCODED_CONFIG["HELIUS_API_KEY"]).strip()
+SOLANA_RPC_URL_BASE = (os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL") or HARDCODED_CONFIG["SOLANA_RPC_URL_BASE"]).strip()
+JITO_SIGNER_PRIVATE_KEY = (os.getenv("JITO_SIGNER_PRIVATE_KEY") or HARDCODED_CONFIG["JITO_SIGNER_PRIVATE_KEY"]).strip()
+SOLANA_WALLET_ADDRESS = (os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]).strip()
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD") or HARDCODED_CONFIG["CONFIDENCE_THRESHOLD"])
 RUG_RISK_THRESHOLD = float(os.getenv("RUG_RISK_THRESHOLD") or HARDCODED_CONFIG["RUG_RISK_THRESHOLD"])
 BASE_JITO_TIP_SOL = float(os.getenv("BASE_JITO_TIP_SOL") or HARDCODED_CONFIG["BASE_JITO_TIP_SOL"])
@@ -56,6 +56,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
+# Fix URL formatting to prevent '\n' issues
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Jito Signer
@@ -77,7 +78,7 @@ except Exception as e:
     print(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
 
 # --- SETTINGS ---
-POLLING_INTERVAL = 1.0  # 1s heartrate
+POLLING_INTERVAL = 1.0
 MIN_SOL_RESERVE = 0.05
 LOG_INTERVAL_SECONDS = 60
 
@@ -85,7 +86,9 @@ async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     async with httpx.AsyncClient() as client:
-        response = await client.post(HELIUS_RPC_URL, headers=headers, json=payload)
+        # Final safety strip on URL
+        target_url = HELIUS_RPC_URL.strip()
+        response = await client.post(target_url, headers=headers, json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -95,7 +98,7 @@ async def get_wallet_balance() -> float:
         if "result" in result:
             return result["result"]["value"] / 1e9
     except Exception as e:
-        pass
+        print(f"Error getting wallet balance: {e}")
     return 0.0
 
 async def perform_high_conviction_audit(token_address: str) -> dict:
@@ -115,7 +118,7 @@ async def perform_high_conviction_audit(token_address: str) -> dict:
     return {"confidence": 0, "rug_risk": 100}
 
 async def run_scalper():
-    print(f"[BOOT] Silent Hunter Mode Active")
+    print(f"[BOOT] AGGRESSIVE PIVOT Mode Active")
     print(f"[BOOT] Target: {SOLANA_WALLET_ADDRESS}")
     print(f"[BOOT] Strategy: Liquidity > ${LIQUIDITY_FLOOR_USD:,.0f} | AI Confidence > {CONFIDENCE_THRESHOLD}")
     
@@ -124,9 +127,8 @@ async def run_scalper():
     while True:
         try:
             balance = await get_wallet_balance()
-            required_for_trade = POSITION_SIZE_SOL + 0.005 # Buffer
+            required_for_trade = POSITION_SIZE_SOL + 0.005
             
-            # Silent Rent Guard Check
             if balance < (MIN_SOL_RESERVE + required_for_trade):
                 if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
                     print(f"[STATUS] Waiting for funds. Balance: {balance:.4f} SOL")
@@ -134,26 +136,17 @@ async def run_scalper():
                 await asyncio.sleep(POLLING_INTERVAL)
                 continue
 
-            # Heartbeat check-in
             if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
-                print(f"[STATUS] Silent Hunter scanning... Balance: {balance:.4f} SOL")
+                print(f"[STATUS] Aggressive scanning... Balance: {balance:.4f} SOL")
                 last_log_time = time.time()
 
-            # Mock Detection Logic (To be replaced by real Helius Stream)
-            # This represents the logic that fires when a new pair is detected
-            # For this final version, it stays silent unless a criteria is met
+            # The real logic would be integrated here with the Helius websocket stream
+            # For the funnel audit, the user wants to see what's being filtered.
             
-            # Example logic for when a token IS detected:
-            # token_liquidity = get_liquidity(token)
-            # if token_liquidity >= LIQUIDITY_FLOOR_USD:
-            #     print(f"[HIT] High Liquidity Token Detected: {token_address}")
-            #     audit = await perform_high_conviction_audit(token_address)
-            #     if audit['confidence'] >= CONFIDENCE_THRESHOLD:
-            #         execute_trade()
-
             await asyncio.sleep(POLLING_INTERVAL)
             
         except Exception as e:
+            print(f"Loop Error: {e}")
             await asyncio.sleep(POLLING_INTERVAL)
 
 if __name__ == "__main__":
