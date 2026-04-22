@@ -18,15 +18,23 @@ from solders.keypair import Keypair
 load_dotenv()
 
 # --- Configuration ---
+# Support multiple environment variable names for maximum flexibility
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
-SOLANA_RPC_URL_BASE = os.getenv("HELIUS_RPC_URL")
-JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
-# Match EXACTLY what is in the Render 'Environment' tab
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") # Supporting 'I_KEY' from user screenshot
+SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL")
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
+JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 
-if not GOOGLE_API_KEY or not HELIUS_API_KEY or not SOLANA_RPC_URL_BASE or not JITO_SIGNER_PRIVATE_KEY:
-    print("Error: GOOGLE_API_KEY, HELIUS_API_KEY, SOLANA_RPC_URL_BASE, and JITO_SIGNER_PRIVATE_KEY must be set in environment variables.")
+# Detailed error logging to identify exactly what is missing
+missing_vars = []
+if not GOOGLE_API_KEY: missing_vars.append("GOOGLE_API_KEY/GEMINI_API_KEY")
+if not HELIUS_API_KEY: missing_vars.append("HELIUS_API_KEY")
+if not SOLANA_RPC_URL_BASE: missing_vars.append("SOLANA_RPC_URL_BASE/HELIUS_RPC_URL/RPC_URL")
+if not JITO_SIGNER_PRIVATE_KEY: missing_vars.append("JITO_SIGNER_PRIVATE_KEY")
+
+if missing_vars:
+    print(f"CRITICAL ERROR: Missing environment variables: {', '.join(missing_vars)}")
+    print("Please ensure these are set in the Render 'Environment' tab.")
     exit(1)
 
 # Gemini API configuration
