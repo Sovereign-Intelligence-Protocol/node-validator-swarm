@@ -44,6 +44,7 @@ print(f"[BOOT] HELIUS_API_KEY length: {len(HELIUS_API_KEY)}")
 print(f"[BOOT] SOLANA_RPC_URL_BASE: {SOLANA_RPC_URL_BASE}")
 print(f"[BOOT] JITO_SIGNER_PRIVATE_KEY length: {len(JITO_SIGNER_PRIVATE_KEY)}")
 print(f"[BOOT] SOLANA_WALLET_ADDRESS: {SOLANA_WALLET_ADDRESS}")
+print(f"[BOOT] JITO_SIGNER_PRIVATE_KEY (at runtime): {JITO_SIGNER_PRIVATE_KEY[:5]}...{JITO_SIGNER_PRIVATE_KEY[-5:]}")
 
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
