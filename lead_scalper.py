@@ -51,24 +51,29 @@ GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemin
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Jito Signer
+print(f"[DEBUG] JITO_SIGNER_PRIVATE_KEY (raw from config): {JITO_SIGNER_PRIVATE_KEY[:10]}...{JITO_SIGNER_PRIVATE_KEY[-10:]}")
 jito_signer = None
 try:
     raw_key = JITO_SIGNER_PRIVATE_KEY.strip().strip("'").strip('"')
+    print(f"[DEBUG] JITO_SIGNER_PRIVATE_KEY (stripped): {raw_key[:10]}...{raw_key[-10:]}")
     if raw_key.startswith("["):
         key_bytes = bytes(json.loads(raw_key))
         jito_signer = Keypair.from_bytes(key_bytes)
     else:
         key_bytes = base58.b58decode(raw_key)
+        print(f"[DEBUG] Decoded key_bytes length: {len(key_bytes)}")
         if len(key_bytes) == 64:
             jito_signer = Keypair.from_bytes(key_bytes)
         elif len(key_bytes) == 32:
             jito_signer = Keypair.from_seed(key_bytes)
         else:
-            raise ValueError(f"Invalid key length: {len(key_bytes)} bytes")
+            raise ValueError(f"Invalid key length: {len(key_bytes)} bytes. Raw key: {raw_key[:10]}...{raw_key[-10:]}")
     
     if jito_signer:
         print(f"[SIGNER] Jito signer initialized successfully: {jito_signer.pubkey()}")
 except Exception as e:
+    print(f"[DEBUG] Exception type: {type(e).__name__}")
+    print(f"[DEBUG] Exception details: {e}")
     print(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
 
 # --- Advanced Filtering Parameters ---
@@ -100,6 +105,8 @@ async def get_wallet_balance() -> float:
             print(f"[WALLET] Current Balance: {balance_sol:.9f} SOL")
             return balance_sol
     except Exception as e:
+        print(f"[DEBUG] Exception type: {type(e).__name__}")
+        print(f"[DEBUG] Exception details: {e}")
         print(f"Error getting wallet balance: {e}")
     return 0.0
 
@@ -138,6 +145,8 @@ async def run_scalper():
             print(f"Scanning... (next in {POLLING_INTERVAL_SECONDS}s)")
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
         except Exception as e:
+            print(f"[DEBUG] Exception type: {type(e).__name__}")
+            print(f"[DEBUG] Exception details: {e}")
             print(f"Loop Error: {e}")
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
