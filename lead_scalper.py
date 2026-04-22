@@ -61,7 +61,7 @@ HARDCODED_CONFIG = {
 GOOGLE_API_KEY = (os.getenv("GOOGLE_API_KEY") or HARDCODED_CONFIG["GOOGLE_API_KEY"]).strip()
 HELIUS_API_KEY = (os.getenv("HELIUS_API_KEY") or HARDCODED_CONFIG["HELIUS_API_KEY"]).strip()
 RPC_URL = f"{HARDCODED_CONFIG['SOLANA_RPC_URL_BASE']}/?api-key={HELIUS_API_KEY}"
-HELIUS_WS_URL = f"wss://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
+HELIUS_WS_URL = "wss://mainnet.helius-rpc.com"
 JITO_BLOCK_ENGINE_URL = HARDCODED_CONFIG["JITO_BLOCK_ENGINE_URL"]
 SOLANA_WALLET_ADDRESS = (os.getenv("SOLANA_WALLET_ADDRESS") or HARDCODED_CONFIG["SOLANA_WALLET_ADDRESS"]).strip()
 
@@ -165,7 +165,7 @@ async def run_elite_hunter():
     while True:
         reporting_active = datetime.now() < end_time
         try:
-            async with websockets.connect(HELIUS_WS_URL) as ws:
+            async with websockets.connect(f"{HELIUS_WS_URL}/?api-key={HELIUS_API_KEY}") as ws:
                 subscription_query = {
                     "jsonrpc": "2.0",
                     "id": 1,
