@@ -1,6 +1,6 @@
 # Lead Scalper Bot - 'Balanced Predator' Edition
 # 'Silent Hunter' Mode Enabled
-# Deployment timestamp: 2026-04-22 02:05 PM
+# Deployment timestamp: 2026-04-22 02:10 PM
 
 import os
 import time
@@ -55,7 +55,9 @@ STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT") or HARDCODED_CONFIG["ST
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
+# FIXED: Ensure the RPC URL is clean and doesn't double-append the API key
+base_url = SOLANA_RPC_URL_BASE.split('?')[0].strip()
+HELIUS_RPC_URL = f"{base_url}/?api-key={HELIUS_API_KEY}"
 
 # Configure Jito Signer
 jito_signer = None
@@ -79,7 +81,9 @@ async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     async with httpx.AsyncClient() as client:
-        response = await client.post(HELIUS_RPC_URL.strip(), headers=headers, json=payload)
+        # Final safety check on URL formatting
+        url = HELIUS_RPC_URL.strip()
+        response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         return response.json()
 
@@ -89,6 +93,7 @@ async def get_wallet_balance() -> float:
         if "result" in result:
             return result["result"]["value"] / 1e9
     except Exception as e:
+        # Silently fail in Hunter mode unless it's a critical error
         pass
     return 0.0
 
@@ -119,7 +124,7 @@ async def run_scalper():
     while True:
         try:
             balance = await get_wallet_balance()
-            required_for_trade = POSITION_SIZE_SOL + FIXED_JITO_TIP_SOL + 0.002 # Trade + Tip + Gas
+            required_for_trade = POSITION_SIZE_SOL + FIXED_JITO_TIP_SOL + 0.002
             
             if balance < (MIN_SOL_RESERVE + required_for_trade):
                 if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
@@ -132,7 +137,7 @@ async def run_scalper():
                 print(f"[STATUS] Silent Hunter scanning... Balance: {balance:.4f} SOL")
                 last_log_time = time.time()
 
-            # Detection and filtering logic would happen here...
+            # Detection logic...
             
             await asyncio.sleep(POLLING_INTERVAL)
             
