@@ -1,6 +1,6 @@
 # Lead Scalper Bot - 'Balanced Predator' Edition
 # 'Silent Hunter' Mode Enabled
-# Deployment timestamp: 2026-04-22 02:10 PM
+# Deployment timestamp: 2026-04-22 02:25 PM
 
 import os
 import time
@@ -9,6 +9,8 @@ import json
 import hashlib
 import re
 import base58
+import sys
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -17,6 +19,17 @@ import google.generativeai as genai
 from solana.rpc.api import Client as SolanaClient
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
+
+# Configure Logging to surface stderr
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(sys.stderr)
+    ]
+)
+logger = logging.getLogger("LeadScalper")
 
 # Load environment variables
 load_dotenv()
@@ -69,23 +82,32 @@ try:
     else:
         key_bytes = base58.b58decode(raw_key)
         jito_signer = Keypair.from_bytes(key_bytes) if len(key_bytes) == 64 else Keypair.from_seed(key_bytes)
+    logger.info("Jito Signer Initialized Successfully")
 except Exception as e:
-    print(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
+    logger.error(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
 
 # --- SETTINGS ---
 POLLING_INTERVAL = 1.0
 MIN_SOL_RESERVE = 0.05
 LOG_INTERVAL_SECONDS = 60
+BALANCE_CHECK_INTERVAL = 600 # 10 minutes
+LATENCY_KILL_SWITCH_SECONDS = 2.0
 
 async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     async with httpx.AsyncClient() as client:
-        # Final safety check on URL formatting
         url = HELIUS_RPC_URL.strip()
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await client.post(url, headers=headers, json=payload, timeout=10.0)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"RPC HTTP Error: {e.response.status_code} - {e.response.text}")
+            raise
+        except Exception as e:
+            logger.error(f"RPC Connection Error: {e}")
+            raise
 
 async def get_wallet_balance() -> float:
     try:
@@ -93,11 +115,15 @@ async def get_wallet_balance() -> float:
         if "result" in result:
             return result["result"]["value"] / 1e9
     except Exception as e:
-        # Silently fail in Hunter mode unless it's a critical error
-        pass
+        logger.warning(f"Failed to fetch balance: {e}")
     return 0.0
 
-async def perform_high_conviction_audit(token_address: str) -> dict:
+async def perform_high_conviction_audit(token_address: str, detection_time: float) -> dict:
+    # Latency Kill-Switch: Check before starting
+    if time.time() - detection_time > LATENCY_KILL_SWITCH_SECONDS:
+        logger.info(f"SKIP: Latency Kill-Switch triggered before audit for {token_address}")
+        return {"confidence": 0, "rug_risk": 100, "skipped": True}
+
     try:
         prompt = (
             f"Perform a high-conviction audit for Solana token: {token_address}\n"
@@ -106,42 +132,64 @@ async def perform_high_conviction_audit(token_address: str) -> dict:
         )
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
+        
+        # Latency Kill-Switch: Check after audit completion
+        if time.time() - detection_time > LATENCY_KILL_SWITCH_SECONDS:
+            logger.info(f"SKIP: Latency Kill-Switch triggered after audit for {token_address}")
+            return {"confidence": 0, "rug_risk": 100, "skipped": True}
+
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
         if json_match:
             return json.loads(json_match.group(0))
     except Exception as e:
-        pass
+        logger.error(f"AI Audit Error: {e}")
     return {"confidence": 0, "rug_risk": 100}
 
 async def run_scalper():
-    print(f"[BOOT] BALANCED PREDATOR Mode Active")
-    print(f"[BOOT] Target: {SOLANA_WALLET_ADDRESS}")
-    print(f"[BOOT] Strategy: Liquidity > ${LIQUIDITY_FLOOR_USD:,.0f} | AI Confidence > {CONFIDENCE_THRESHOLD}")
-    print(f"[BOOT] Risk: Rug Limit {RUG_RISK_THRESHOLD}% | Position {POSITION_SIZE_SOL} SOL | Tip {FIXED_JITO_TIP_SOL} SOL")
+    logger.info(f"[BOOT] BALANCED PREDATOR Mode Active")
+    logger.info(f"[BOOT] Target: {SOLANA_WALLET_ADDRESS}")
+    logger.info(f"[BOOT] Strategy: Liquidity > ${LIQUIDITY_FLOOR_USD:,.0f} | AI Confidence > {CONFIDENCE_THRESHOLD}")
+    logger.info(f"[BOOT] Risk: Rug Limit {RUG_RISK_THRESHOLD}% | Position {POSITION_SIZE_SOL} SOL | Tip {FIXED_JITO_TIP_SOL} SOL")
     
+    # Initial balance check
+    current_balance = await get_wallet_balance()
+    last_balance_check = time.time()
     last_log_time = 0
+    
+    logger.info(f"[WALLET] Initial Balance: {current_balance:.4f} SOL")
     
     while True:
         try:
-            balance = await get_wallet_balance()
+            # Periodic balance check (every 10 minutes)
+            if time.time() - last_balance_check > BALANCE_CHECK_INTERVAL:
+                current_balance = await get_wallet_balance()
+                last_balance_check = time.time()
+                logger.info(f"[WALLET] Periodic Balance Update: {current_balance:.4f} SOL")
+
             required_for_trade = POSITION_SIZE_SOL + FIXED_JITO_TIP_SOL + 0.002
             
-            if balance < (MIN_SOL_RESERVE + required_for_trade):
+            if current_balance < (MIN_SOL_RESERVE + required_for_trade):
                 if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
-                    print(f"[STATUS] Waiting for funds. Balance: {balance:.4f} SOL")
+                    logger.info(f"[STATUS] Waiting for funds. Balance: {current_balance:.4f} SOL")
                     last_log_time = time.time()
                 await asyncio.sleep(POLLING_INTERVAL)
                 continue
 
             if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
-                print(f"[STATUS] Silent Hunter scanning... Balance: {balance:.4f} SOL")
+                logger.info(f"[STATUS] Silent Hunter scanning... Balance: {current_balance:.4f} SOL")
                 last_log_time = time.time()
 
-            # Detection logic...
+            # --- MOCK DETECTION LOGIC FOR DEMO/STRUCTURE ---
+            # In a real scenario, this would be listening to a Helius stream or websocket
+            # detection_time = time.time()
+            # audit_result = await perform_high_conviction_audit("TOKEN_ADDRESS", detection_time)
+            # if audit_result.get("confidence", 0) >= CONFIDENCE_THRESHOLD and not audit_result.get("skipped"):
+            #     logger.info(f"TRADE TRIGGERED: {audit_result}")
             
             await asyncio.sleep(POLLING_INTERVAL)
             
         except Exception as e:
+            logger.error(f"Loop Error: {e}")
             await asyncio.sleep(POLLING_INTERVAL)
 
 if __name__ == "__main__":
