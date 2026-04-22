@@ -18,11 +18,17 @@ from solders.keypair import Keypair
 load_dotenv()
 
 # --- Configuration ---
+# Fail-safe: Import hardcoded config if environment variables are missing
+try:
+    import config
+except ImportError:
+    config = None
+
 # Support multiple environment variable names for maximum flexibility
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") # Supporting 'I_KEY' from user screenshot
-SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL")
-JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or (config.GOOGLE_API_KEY if config else None)
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") or (config.HELIUS_API_KEY if config else None)
+SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL") or (config.SOLANA_RPC_URL_BASE if config else None)
+JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY") or (config.JITO_SIGNER_PRIVATE_KEY if config else None)
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 
 # Detailed error logging to identify exactly what is missing
