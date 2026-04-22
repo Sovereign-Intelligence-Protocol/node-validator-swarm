@@ -1,6 +1,7 @@
 # Lead Scalper Bot - 'Institutional Predatory' Edition
-# Deployment timestamp: 2026-04-22 05:20 AM
+# Deployment timestamp: 2026-04-22 06:55 AM
 # Optimized for: Ohio (US East) Latency, Gemini AI Audit, Dynamic Jito Tipping
+# Optimized Balance Profile: 0.36 SOL (Low Reserve, Precision Buffers)
 
 import os
 import time
@@ -32,7 +33,7 @@ HARDCODED_CONFIG = {
     "RUG_RISK_THRESHOLD": 15,
     "BASE_JITO_TIP_SOL": 0.001,
     "LIQUIDITY_FLOOR_USD": 250000,
-    "POSITION_SIZE_SOL": 0.05,
+    "POSITION_SIZE_SOL": 0.03, # Adjusted for 0.36 SOL balance
     "TAKE_PROFIT_PERCENT": 50,
     "STOP_LOSS_PERCENT": 15
 }
@@ -92,7 +93,7 @@ except Exception as e:
 
 # --- Advanced Filtering Parameters ---
 POLLING_INTERVAL_SECONDS = 2
-MIN_SOL_RESERVE = 0.02
+MIN_SOL_RESERVE = 0.05 # Lowered Rent Guard for 0.36 SOL balance
 
 async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
@@ -163,8 +164,13 @@ async def run_scalper():
     while True:
         try:
             balance = await get_wallet_balance()
-            if balance < MIN_SOL_RESERVE:
-                print(f"[RENT GUARD] Insufficient SOL ({balance:.6f}). Need {MIN_SOL_RESERVE}. Skipping.")
+            
+            # Precision Buffer Calculation: Trade + Tip + Reserve
+            # Even with high-conviction tip (0.0015), total required is ~0.0315 SOL
+            required_for_trade = POSITION_SIZE_SOL + 0.002 # Including buffer for highest tip and gas
+            
+            if balance < (MIN_SOL_RESERVE + required_for_trade):
+                print(f"[RENT GUARD] Insufficient SOL ({balance:.6f}). Need {MIN_SOL_RESERVE + required_for_trade:.4f} (Reserve + Trade). Skipping.")
                 await asyncio.sleep(POLLING_INTERVAL_SECONDS)
                 continue
 
@@ -180,7 +186,7 @@ async def run_scalper():
             if confidence > CONFIDENCE_THRESHOLD and rug_risk < RUG_RISK_THRESHOLD:
                 print(f"!!! PREDATORY OPPORTUNITY IDENTIFIED !!!")
                 tip_amount = calculate_dynamic_jito_tip(confidence)
-                print(f"[EXECUTION] Preparing trade with Jito Tip: {tip_amount:.4f} SOL")
+                print(f"[EXECUTION] Preparing trade of {POSITION_SIZE_SOL} SOL with Jito Tip: {tip_amount:.4f} SOL")
                 # Trade execution logic would go here
             else:
                 print(f"[FILTER] Criteria not met. Confidence > {CONFIDENCE_THRESHOLD} and Rug Risk < {RUG_RISK_THRESHOLD}% required.")
