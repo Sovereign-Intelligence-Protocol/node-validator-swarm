@@ -151,21 +151,21 @@ async def analyze_social_sentiment(query: str) -> tuple:
     try:
         headers = {"Content-Type": "application/json"}
         prompt = f"""Analyze the following crypto token for sentiment and potential \"rug pull\" risk.
-        Token: \'{query}\'
+            Token: \'{query}\'
 
-        Evaluate these factors:
-        1.  **Developer Wallet History:** Look for signs of high-velocity failed launches or suspicious past projects by the same developer.
-        2.  **Holder Concentration:** Determine if the top 10 holders control more than 30% of the supply.
-        3.  **LP Burn Status:** Is the liquidity pool locked or burned? (Crucial for preventing rug pulls).
+            Evaluate these factors:
+            1.  **Developer Wallet History:** Look for signs of high-velocity failed launches or suspicious past projects by the same developer.
+            2.  **Holder Concentration:** Determine if the top 10 holders control more than 30% of the supply.
+            3.  **LP Burn Status:** Is the liquidity pool locked or burned? (Crucial for preventing rug pulls).
 
-        Based on this analysis, provide:
-        -   **Sentiment:** [positive/neutral/negative]
-        -   **Confidence:** [1-100, reflecting overall positive sentiment and low risk]
-        -   **Risk of Rug:** [0-100%, based on developer history, holder concentration, and LP burn status]
+            Based on this analysis, provide:
+            -   **Sentiment:** [positive/neutral/negative]
+            -   **Confidence:** [1-100, reflecting overall positive sentiment and low risk]
+            -   **Risk of Rug:** [0-100%, based on developer history, holder concentration, and LP burn status]
 
-        Example Format:
-        Sentiment: positive, Confidence: 92, Risk of Rug: 5%
-        """
+            Example Format:
+            Sentiment: positive, Confidence: 92, Risk of Rug: 5%
+            """
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         async with httpx.AsyncClient() as client:
             response = await client.post(GEMINI_API_URL, headers=headers, json=payload)
