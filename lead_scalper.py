@@ -1,5 +1,5 @@
 # Lead Scalper Bot - Production Deployment (Ohio optimized)
-# Deployment timestamp: 2026-04-21 11:35 PM
+# Deployment timestamp: 2026-04-22 04:55 AM
 # Refactored: Ultra-robust Jito signer initialization and merged fail-safe config
 import os
 import time
@@ -7,6 +7,7 @@ import asyncio
 import json
 import hashlib
 import re
+import base58
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -59,26 +60,18 @@ solana_client = SolanaClient(HELIUS_RPC_URL)
 # Configure Jito Signer
 jito_signer = None
 try:
-    import base58
-    from solders.keypair import Keypair as SoldersKeypair
-    
-    raw_key = JITO_SIGNER_PRIVATE_KEY.strip()
-    # Remove any quotes that might have been added by accident
-    raw_key = raw_key.strip("'").strip('"')
+    raw_key = JITO_SIGNER_PRIVATE_KEY.strip().strip("'").strip('"')
     
     if raw_key.startswith("["):
-        # Handle JSON array format: [1, 2, 3, ...]
         key_list = json.loads(raw_key)
         key_bytes = bytes(key_list)
-        jito_signer = SoldersKeypair.from_bytes(key_bytes)
+        jito_signer = Keypair.from_bytes(key_bytes)
     else:
-        # Handle Base58 format
         key_bytes = base58.b58decode(raw_key)
-        # Base58 decoded key can be 32 bytes for a seed or 64 bytes for a full keypair
         if len(key_bytes) == 32:
-            jito_signer = SoldersKeypair.from_seed(key_bytes)
+            jito_signer = Keypair.from_seed(key_bytes)
         elif len(key_bytes) == 64:
-            jito_signer = SoldersKeypair.from_bytes(key_bytes)
+            jito_signer = Keypair.from_bytes(key_bytes)
         else:
             raise ValueError(f"Invalid Jito signer private key length: {len(key_bytes)} bytes")
     
