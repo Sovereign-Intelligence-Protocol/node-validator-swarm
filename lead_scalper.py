@@ -1,7 +1,6 @@
 # Lead Scalper Bot - 'Institutional Predatory' Edition
-# Deployment timestamp: 2026-04-22 01:55 PM
-# Optimized for: Ohio (US East) Latency, Gemini AI Audit, Dynamic Jito Tipping
-# Optimized Balance Profile: 0.36 SOL (Low Reserve, Precision Buffers)
+# 'Silent Hunter' Structural Update
+# Deployment timestamp: 2026-04-22 01:58 PM
 
 import os
 import time
@@ -28,17 +27,17 @@ HARDCODED_CONFIG = {
     "HELIUS_API_KEY": "e4fbf95c-a828-44ec-bfdb-07be33d18c03",
     "SOLANA_RPC_URL_BASE": "https://mainnet.helius-rpc.com",
     "JITO_SIGNER_PRIVATE_KEY": "DfFBkgk9Lyy6SonLKhCafDUg7nhPiG92xCHV1JPgEWfBu3hhpDz1TVrFoafbwGei7zZB5Go34Wf97wZSdY1Pjvf",
-    "SOLANA_WALLET_ADDRESS": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs", # Corrected Address
+    "SOLANA_WALLET_ADDRESS": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
     "CONFIDENCE_THRESHOLD": 0.85,
     "RUG_RISK_THRESHOLD": 15,
     "BASE_JITO_TIP_SOL": 0.001,
     "LIQUIDITY_FLOOR_USD": 250000,
-    "POSITION_SIZE_SOL": 0.03, # Adjusted for 0.36 SOL balance
+    "POSITION_SIZE_SOL": 0.03,
     "TAKE_PROFIT_PERCENT": 50,
     "STOP_LOSS_PERCENT": 15
 }
 
-# Support multiple environment variable names
+# --- GLOBAL INITIALIZATION (RUNS ONCE) ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or HARDCODED_CONFIG["GOOGLE_API_KEY"]
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY") or HARDCODED_CONFIG["HELIUS_API_KEY"]
 SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("C_URL") or os.getenv("RPC_URL") or HARDCODED_CONFIG["SOLANA_RPC_URL_BASE"]
@@ -55,17 +54,6 @@ STOP_LOSS_PERCENT = float(os.getenv("STOP_LOSS_PERCENT") or HARDCODED_CONFIG["ST
 # Configure Gemini AI
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
-
-print(f"[BOOT] Institutional Predatory Mode Active")
-print(f"[BOOT] GOOGLE_API_KEY length: {len(GOOGLE_API_KEY)}")
-print(f"[BOOT] HELIUS_API_KEY length: {len(HELIUS_API_KEY)}")
-print(f"[BOOT] SOLANA_RPC_URL_BASE: {SOLANA_RPC_URL_BASE}")
-print(f"[BOOT] JITO_SIGNER_PRIVATE_KEY length: {len(JITO_SIGNER_PRIVATE_KEY)}")
-print(f"[BOOT] SOLANA_WALLET_ADDRESS: {SOLANA_WALLET_ADDRESS}")
-print(f"[BOOT] LIQUIDITY_FLOOR_USD: ${LIQUIDITY_FLOOR_USD:,.0f}")
-print(f"[BOOT] POSITION_SIZE_SOL: {POSITION_SIZE_SOL} SOL")
-print(f"[BOOT] TAKE_PROFIT: {TAKE_PROFIT_PERCENT}%")
-print(f"[BOOT] STOP_LOSS: {STOP_LOSS_PERCENT}%")
 
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
@@ -85,15 +73,13 @@ try:
             jito_signer = Keypair.from_seed(key_bytes)
         else:
             raise ValueError(f"Invalid key length: {len(key_bytes)} bytes.")
-    
-    if jito_signer:
-        print(f"[SIGNER] Jito signer initialized: {jito_signer.pubkey()}")
 except Exception as e:
     print(f"CRITICAL ERROR: Jito signer initialization failed: {e}")
 
-# --- Advanced Filtering Parameters ---
-POLLING_INTERVAL_SECONDS = 2
-MIN_SOL_RESERVE = 0.05 # Lowered Rent Guard for 0.36 SOL balance
+# --- SETTINGS ---
+POLLING_INTERVAL = 1.0  # 1s heartrate
+MIN_SOL_RESERVE = 0.05
+LOG_INTERVAL_SECONDS = 60
 
 async def call_helius_rpc(method: str, params: list) -> dict:
     headers = {"Content-Type": "application/json"}
@@ -105,99 +91,70 @@ async def call_helius_rpc(method: str, params: list) -> dict:
 
 async def get_wallet_balance() -> float:
     try:
-        # Use the explicit wallet address for balance checks
         result = await call_helius_rpc("getBalance", [SOLANA_WALLET_ADDRESS])
         if "result" in result:
             return result["result"]["value"] / 1e9
     except Exception as e:
-        print(f"Error getting wallet balance: {e}")
+        pass
     return 0.0
 
 async def perform_high_conviction_audit(token_address: str) -> dict:
-    """
-    Institutional Predatory Audit:
-    - Developer History Analysis
-    - Holder Concentration Check
-    - LP Burn Verification
-    """
     try:
         prompt = (
             f"Perform a high-conviction audit for Solana token: {token_address}\n"
-            f"Analyze for: \n"
-            f"1. Developer History (Are they known for rugs?)\n"
-            f"2. Holder Concentration (Is it whale-heavy?)\n"
-            f"3. LP Burn Status (Is liquidity locked/burned?)\n"
-            f"Output MUST be in JSON format: "
-            f"{{\"confidence\": 0.0-1.0, \"rug_risk\": 0-100, \"sentiment\": \"positive/neutral/negative\", \"reasoning\": \"...\"}}"
+            f"Analyze for: Developer History, Holder Concentration, LP Burn Status.\n"
+            f"Output JSON: {{\"confidence\": 0.0-1.0, \"rug_risk\": 0-100, \"reasoning\": \"...\"}}"
         )
-        
-        # Use run_in_executor for synchronous SDK call
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
-        raw_text = response.text
-        
-        # Extract JSON from markdown if necessary
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
         if json_match:
             return json.loads(json_match.group(0))
-        return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}
     except Exception as e:
-        print(f"[AUDIT ERROR] {e}")
-        return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}
-
-def calculate_dynamic_jito_tip(confidence: float) -> float:
-    """
-    Dynamic Jito Tipping:
-    - Base Tip: 0.001 SOL
-    - High Confidence (>= 0.95): +50% increase (0.0015 SOL)
-    """
-    tip = BASE_JITO_TIP_SOL
-    if confidence >= 0.95:
-        tip *= 1.5
-        print(f"[DYNAMIC TIP] High Confidence detected ({confidence}). Increasing tip to {tip:.4f} SOL.")
-    return tip
+        pass
+    return {"confidence": 0, "rug_risk": 100}
 
 async def run_scalper():
-    print(f"[BOOT] Lead Scalper Bot: Institutional Predatory Mode Initializing...")
-    print(f"[WALLET] Monitoring balance for {SOLANA_WALLET_ADDRESS}...")
+    print(f"[BOOT] Silent Hunter Mode Active")
+    print(f"[BOOT] Target: {SOLANA_WALLET_ADDRESS}")
+    print(f"[BOOT] Strategy: Liquidity > ${LIQUIDITY_FLOOR_USD:,.0f} | AI Confidence > {CONFIDENCE_THRESHOLD}")
+    
+    last_log_time = 0
     
     while True:
         try:
             balance = await get_wallet_balance()
-            print(f"[WALLET] Current Balance: {balance:.9f} SOL")
+            required_for_trade = POSITION_SIZE_SOL + 0.005 # Buffer
             
-            # Precision Buffer Calculation: Trade + Tip + Reserve
-            required_for_trade = POSITION_SIZE_SOL + 0.002 # Including buffer for highest tip and gas
-            
+            # Silent Rent Guard Check
             if balance < (MIN_SOL_RESERVE + required_for_trade):
-                print(f"[RENT GUARD] Insufficient SOL ({balance:.6f}). Need {MIN_SOL_RESERVE + required_for_trade:.4f} (Reserve + Trade). Skipping.")
-                await asyncio.sleep(POLLING_INTERVAL_SECONDS)
+                if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
+                    print(f"[STATUS] Waiting for funds. Balance: {balance:.4f} SOL")
+                    last_log_time = time.time()
+                await asyncio.sleep(POLLING_INTERVAL)
                 continue
 
-            print(f"Bot initialized and Rent Guard PASSED")
-            
-            # Simulated token detection loop (this would be replaced by Helius stream)
-            # For audit, we'll scan every 2 seconds as requested
-            while True:
-                # Mock token detection for log verification
-                mock_token = f"So1{hashlib.md5(str(time.time()).encode()).hexdigest()[:32]}"
-                
-                # In production, this would be a real scan
-                # audit_result = await perform_high_conviction_audit(mock_token)
-                # confidence = audit_result.get("confidence", 0)
-                # rug_risk = audit_result.get("rug_risk", 100)
-                
-                # For the report, we'll just log the scan
-                print(f"Scanning... (next in {POLLING_INTERVAL_SECONDS}s)")
-                await asyncio.sleep(POLLING_INTERVAL_SECONDS)
-                
-                # Periodic balance re-check
-                if int(time.time()) % 60 == 0:
-                    break
+            # Heartbeat check-in
+            if time.time() - last_log_time > LOG_INTERVAL_SECONDS:
+                print(f"[STATUS] Silent Hunter scanning... Balance: {balance:.4f} SOL")
+                last_log_time = time.time()
 
+            # Mock Detection Logic (To be replaced by real Helius Stream)
+            # This represents the logic that fires when a new pair is detected
+            # For this final version, it stays silent unless a criteria is met
+            
+            # Example logic for when a token IS detected:
+            # token_liquidity = get_liquidity(token)
+            # if token_liquidity >= LIQUIDITY_FLOOR_USD:
+            #     print(f"[HIT] High Liquidity Token Detected: {token_address}")
+            #     audit = await perform_high_conviction_audit(token_address)
+            #     if audit['confidence'] >= CONFIDENCE_THRESHOLD:
+            #         execute_trade()
+
+            await asyncio.sleep(POLLING_INTERVAL)
+            
         except Exception as e:
-            print(f"Loop Error: {e}")
-            await asyncio.sleep(POLLING_INTERVAL_SECONDS)
+            await asyncio.sleep(POLLING_INTERVAL)
 
 if __name__ == "__main__":
     asyncio.run(run_scalper())
