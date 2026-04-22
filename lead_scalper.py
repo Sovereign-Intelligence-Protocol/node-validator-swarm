@@ -1,5 +1,5 @@
 # Lead Scalper Bot - 'Institutional Predatory' Edition
-# Deployment timestamp: 2026-04-22 05:15 AM
+# Deployment timestamp: 2026-04-22 05:20 AM
 # Optimized for: Ohio (US East) Latency, Gemini AI Audit, Dynamic Jito Tipping
 
 import os
@@ -13,6 +13,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 import httpx
+import google.generativeai as genai
 from solana.rpc.api import Client as SolanaClient
 from solders.pubkey import Pubkey as PublicKey
 from solders.keypair import Keypair
@@ -42,6 +43,10 @@ CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD") or HARDCODED_CONF
 RUG_RISK_THRESHOLD = float(os.getenv("RUG_RISK_THRESHOLD") or HARDCODED_CONFIG["RUG_RISK_THRESHOLD"])
 BASE_JITO_TIP_SOL = float(os.getenv("BASE_JITO_TIP_SOL") or HARDCODED_CONFIG["BASE_JITO_TIP_SOL"])
 
+# Configure Gemini AI
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 print(f"[BOOT] Institutional Predatory Mode Active")
 print(f"[BOOT] GOOGLE_API_KEY length: {len(GOOGLE_API_KEY)}")
 print(f"[BOOT] HELIUS_API_KEY length: {len(HELIUS_API_KEY)}")
@@ -50,7 +55,6 @@ print(f"[BOOT] JITO_SIGNER_PRIVATE_KEY length: {len(JITO_SIGNER_PRIVATE_KEY)}")
 print(f"[BOOT] SOLANA_WALLET_ADDRESS: {SOLANA_WALLET_ADDRESS}")
 
 JITO_BLOCK_ENGINE_URL = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
 
 # Configure Jito Signer
@@ -106,7 +110,6 @@ async def perform_high_conviction_audit(token_address: str) -> dict:
     - LP Burn Verification
     """
     try:
-        headers = {"Content-Type": "application/json"}
         prompt = (
             f"Perform a high-conviction audit for Solana token: {token_address}\n"
             f"Analyze for: \n"
@@ -116,17 +119,17 @@ async def perform_high_conviction_audit(token_address: str) -> dict:
             f"Output MUST be in JSON format: "
             f"{{\"confidence\": 0.0-1.0, \"rug_risk\": 0-100, \"sentiment\": \"positive/neutral/negative\", \"reasoning\": \"...\"}}"
         )
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        async with httpx.AsyncClient() as client:
-            response = await client.post(GEMINI_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            raw_text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            
-            # Extract JSON from markdown if necessary
-            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group(0))
-            return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}
+        
+        # Use run_in_executor for synchronous SDK call
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
+        raw_text = response.text
+        
+        # Extract JSON from markdown if necessary
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(0))
+        return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}
     except Exception as e:
         print(f"[AUDIT ERROR] {e}")
         return {"confidence": 0, "rug_risk": 100, "sentiment": "neutral"}

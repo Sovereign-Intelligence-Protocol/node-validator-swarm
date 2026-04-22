@@ -3,3 +3,4 @@ httpx
 solana
 solders
 base58
+google-generativeai
