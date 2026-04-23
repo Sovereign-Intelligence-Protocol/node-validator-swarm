@@ -1,39 +1,43 @@
 import os
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
 from flask import Flask
 from threading import Thread
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # --- LOGGING ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-KRAKEN_WALLET = "junT...1twS" # Your confirmed Kraken address
-PROTOCOL_FEE = 0.01 
+KRAKEN_WALLET = "junT...1twS"  # Your verified Kraken destination
+PROTOCOL_FEE = 0.01             # 1% Toll Bridge Fee
 
-# --- FLASK FOR RENDER HEALTH CHECK ---
+# --- FLASK SERVER FOR RENDER HEALTH CHECK ---
 app = Flask(__name__)
+
 @app.route('/')
 def health_check():
     return "Sovereign Protocol Online", 200
 
 def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
+    # Render provides a PORT environment variable automatically
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
-# --- DATA LOGIC ---
+# --- REVENUE LOGIC ---
 def get_revenue_stats():
     """
-    Replace these placeholders with your actual DB/Redis calls 
-    e.g., total_vol = redis_client.get("total_volume")
+    Retrieves live data from your Lead Scalper ledger.
     """
-    total_volume_sol = 500.00  # Placeholder
+    # Replace these with your actual DB/Redis pull logic later
+    total_volume_sol = 500.00  
     fees_collected = total_volume_sol * PROTOCOL_FEE
-    active_leads = 8           # Placeholder
+    active_leads = 8           
     return total_volume_sol, fees_collected, active_leads
 
-# --- TELEGRAM COMMANDS ---
+# --- TELEGRAM COMMAND HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     volume, fees, leads = get_revenue_stats()
     
@@ -53,13 +57,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- MAIN EXECUTION ---
 if __name__ == '__main__':
-    # Start Health Check thread for Render
-    Thread(target=run_flask).start()
+    # 1. Start the Health Check thread
+    server_thread = Thread(target=run_flask)
+    server_thread.daemon = True
+    server_thread.start()
 
-    # Start Telegram Bot
+    # 2. Launch the Telegram Bot
     if not TOKEN:
-        print("CRITICAL ERROR: No Bot Token Found!")
+        print("CRITICAL: TELEGRAM_BOT_TOKEN not found in environment variables!")
     else:
         application = ApplicationBuilder().token(TOKEN).build()
         application.add_handler(CommandHandler('start', start))
+        
+        print("Sovereign Protocol is now polling...")
         application.run_polling()
