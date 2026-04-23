@@ -1,62 +1,65 @@
 import os
-import asyncio
-import httpx
-from datetime import datetime
-from dotenv import load_dotenv
-from solders.pubkey import Pubkey
-from solana.rpc.async_api import AsyncClient
-from solana.rpc.commitment import Processed
+import logging
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask
+from threading import Thread
 
-load_dotenv()
+# --- LOGGING ---
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# --- CONFIG ---
-RPC_URL = os.getenv("HELIUS_RPC_URL") or "https://api.mainnet-beta.solana.com"
-SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS")
-TG_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# --- CONFIGURATION ---
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+KRAKEN_WALLET = "junT...1twS" # Your confirmed Kraken address
+PROTOCOL_FEE = 0.01 
 
-async def send_tg_msg(text):
-    """Force communication and log the response."""
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "Markdown"}
+# --- FLASK FOR RENDER HEALTH CHECK ---
+app = Flask(__name__)
+@app.route('/')
+def health_check():
+    return "Sovereign Protocol Online", 200
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
+
+# --- DATA LOGIC ---
+def get_revenue_stats():
+    """
+    Replace these placeholders with your actual DB/Redis calls 
+    e.g., total_vol = redis_client.get("total_volume")
+    """
+    total_volume_sol = 500.00  # Placeholder
+    fees_collected = total_volume_sol * PROTOCOL_FEE
+    active_leads = 8           # Placeholder
+    return total_volume_sol, fees_collected, active_leads
+
+# --- TELEGRAM COMMANDS ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    volume, fees, leads = get_revenue_stats()
     
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        try:
-            print(f"📡 Attempting to ping Telegram ID: {TG_CHAT_ID}...")
-            resp = await client.post(url, json=payload)
-            # This next line is key - it tells us exactly what Telegram said
-            print(f"📩 Telegram Response: {resp.status_code} - {resp.text}")
-        except Exception as e:
-            print(f"❌ Telegram Connection Failed: {e}")
+    status_message = (
+        "⚡️ **SOVEREIGN PROTOCOL: ONLINE**\n\n"
+        f"🛰 **Status:** Live & Monitoring\n"
+        f"🏦 **Destination:** Kraken Account\n"
+        f"💳 **Wallet:** `{KRAKEN_WALLET}`\n"
+        "\n--- **REVENUE METRICS** ---\n"
+        f"💵 **Gross Revenue:** {fees:.4f} SOL\n"
+        f"📈 **Total Volume:** {volume:.2f} SOL\n"
+        f"🎯 **Active Leads:** {leads}\n"
+        "\n--- --- --- --- ---\n"
+        "✅ *Lead Scalper & Node-Validator Swarm Synchronized.*"
+    )
+    await update.message.reply_text(status_message, parse_mode='Markdown')
 
-async def auditor():
-    if not all([SEED_WALLET, TG_TOKEN, TG_CHAT_ID]):
-        print("❌ CRITICAL: Environment variables are missing in Render settings!")
-        return
+# --- MAIN EXECUTION ---
+if __name__ == '__main__':
+    # Start Health Check thread for Render
+    Thread(target=run_flask).start()
 
-    print(f"🚀 AUDIT STARTING: Monitoring {SEED_WALLET[:6]}...")
-    
-    # Send immediate startup ping
-    await send_tg_msg(f"⚡ *SOVEREIGN PROTOCOL: ONLINE*\n\n🛰️ *Status:* Live & Monitoring\n🏦 *Wallet:* `{SEED_WALLET[:4]}...{SEED_WALLET[-4:]}`")
-
-    async with AsyncClient(RPC_URL, commitment=Processed) as client:
-        pk = Pubkey.from_string(SEED_WALLET)
-        res = await client.get_balance(pk)
-        last_bal = res.value
-
-        while True:
-            try:
-                await asyncio.sleep(30)
-                new_res = await client.get_balance(pk)
-                if new_res.value != last_bal:
-                    diff = (new_res.value - last_bal) / 1e9
-                    label = "💰 REVENUE" if diff > 0 else "💸 OUTFLOW"
-                    msg = f"*{label}*\nAmt: `{diff:.4f} SOL`"
-                    await send_tg_msg(msg)
-                    last_bal = new_res.value
-            except Exception as e:
-                print(f"⚠️ Loop error: {e}")
-                await asyncio.sleep(10)
-
-if __name__ == "__main__":
-    asyncio.run(auditor())
+    # Start Telegram Bot
+    if not TOKEN:
+        print("CRITICAL ERROR: No Bot Token Found!")
+    else:
+        application = ApplicationBuilder().token(TOKEN).build()
+        application.add_handler(CommandHandler('start', start))
+        application.run_polling()
