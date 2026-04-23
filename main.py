@@ -6,82 +6,68 @@ from solana.rpc.async_api import AsyncClient
 
 load_dotenv()
 
-# --- HARD-CODED CONFIG (CRITICAL FIX) ---
-HOT_WALLET = "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs" 
+# --- TARGETS ---
+HOT_WALLET = "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs"
+KRAKEN_DEST = os.getenv("KRAKEN_DESTINATION") 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 RPC_URL = "https://api.mainnet-beta.solana.com"
 
-# --- GLOBAL TRACKER ---
-stats = {"total_lifetime": 0.0, "tolls": 0, "subs": 0, "date": datetime.now().date()}
+# --- SYSTEM STATE ---
+stats = {"lifetime": 0.0, "last_bal": 0}
 
-async def send_discord_update(amount, category, is_initial=False):
-    global stats
-    
-    # Visual Logic: Blue for Subscriptions, Green for Tolls/Initial
-    color = 3447003 if category in ["API SUBSCRIPTION", "WHALE PASS", "INITIAL"] else 3066993
-    title = "🏦 TREASURY REVENUE INITIALIZED" if is_initial else f"💸 {category} RECEIVED"
+async def notify_discord(amount, event_type, tx_sig="Confirmed"):
+    color = 3066993 if "IN" in event_type else 15105570 # Green for In, Orange for Out
+    icon = "📥" if "IN" in event_type else "📤"
     
     payload = {
         "embeds": [{
-            "title": title,
+            "title": f"{icon} {event_type}",
             "color": color,
+            "description": f"**Amount:** `{amount:.4f} SOL`",
             "fields": [
-                {"name": "Lifetime Revenue", "value": f"`{stats['total_lifetime']:.4f} SOL`", "inline": True},
-                {"name": "Current Status", "value": "📈 ACTIVE & SCALING", "inline": True},
-                {"name": "Type", "value": f"**{category}**", "inline": False}
+                {"name": "Current Bridge Balance", "value": f"`{stats['lifetime']:.4f} SOL`", "inline": True},
+                {"name": "Destination", "value": "Kraken Vault" if "OUT" in event_type else "Bridge Wallet", "inline": True}
             ],
             "footer": {"text": f"Sovereign Intel Protocol | {datetime.now().strftime('%H:%M:%S')}"}
         }]
     }
     async with httpx.AsyncClient() as client:
-        try:
-            await client.post(DISCORD_WEBHOOK, json=payload, timeout=10.0)
-        except Exception as e:
-            print(f"Discord Error: {e}")
+        await client.post(DISCORD_WEBHOOK, json=payload)
 
-async def monitor_revenue():
+async def monitor_everything():
     global stats
     async with AsyncClient(RPC_URL) as client:
         pubkey = Pubkey.from_string(HOT_WALLET)
         
-        # 1. Boot up: Grab the existing money you've made
-        print(f"🔗 Syncing Wallet: {HOT_WALLET}")
-        current_bal_raw = (await client.get_balance(pubkey)).value
-        stats["total_lifetime"] = current_bal_raw / 1e9
-        
-        # 2. Immediate proof to Discord
-        await send_discord_update(0, "INITIAL", is_initial=True)
-        
-        last_balance = current_bal_raw
-        
+        # Initial Sync
+        bal_resp = await client.get_balance(pubkey)
+        stats["last_bal"] = bal_resp.value
+        stats["lifetime"] = stats["last_bal"] / 1e9
+
+        print(f"🚀 Full System Monitor Live for {HOT_WALLET}")
+
         while True:
             try:
-                # Reset Daily logic if needed (optional)
-                if datetime.now().date() != stats["date"]:
-                    stats["date"] = datetime.now().date()
-
-                current_bal = (await client.get_balance(pubkey)).value
+                new_resp = await client.get_balance(pubkey)
+                new_bal = new_resp.value
                 
-                if current_bal > last_balance:
-                    gain = (current_bal - last_balance) / 1e9
-                    stats["total_lifetime"] += gain
+                if new_bal != stats["last_bal"]:
+                    diff = (new_bal - stats["last_bal"]) / 1e9
+                    stats["lifetime"] = new_bal / 1e9
                     
-                    # Identify Revenue Type
-                    if gain == 2.0:
-                        cat = "API SUBSCRIPTION"
-                    elif gain == 5.0:
-                        cat = "WHALE PASS"
+                    if diff > 0:
+                        # Categorize the Incoming Money
+                        cat = "SUBSCRIPTION" if diff in [2.0, 5.0] else "TOLL IN"
+                        await notify_discord(diff, f"{cat} RECEIVED")
                     else:
-                        cat = "TOLL"
+                        # Track the money going to Kraken
+                        await notify_discord(abs(diff), "SWEEP TO KRAKEN (OUT)")
                     
-                    await send_discord_update(gain, cat)
-                    print(f"Verified {cat}: {gain} SOL")
-
-                last_balance = current_bal
-                await asyncio.sleep(10) # 10-second heartbeat
+                    stats["last_bal"] = new_bal
+                
+                await asyncio.sleep(5)
             except Exception as e:
-                print(f"Loop Error: {e}")
-                await asyncio.sleep(15)
+                await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    asyncio.run(monitor_revenue())
+    asyncio.run(monitor_everything())
