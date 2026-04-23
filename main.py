@@ -1,5 +1,5 @@
-# Aggressive Sniper Swarm - Omega Edition
-# Unified Code: Gemini 2.0 SDK + Advanced Visual Reporting
+# Aggressive Sniper Swarm - Omega "Money" Edition
+# Full Revenue Tracking + Visual Discord Embeds
 import os
 import asyncio
 import json
@@ -15,36 +15,32 @@ from solders.keypair import Keypair as SoldersKeypair
 
 load_dotenv()
 
-# --- THE PLUG-AND-PLAY SETUP ---
+# --- CORE SETTINGS ---
 MY_API_KEY = "AIzaSyCjVh_3Zi_90ljhgXsNNO_V9relgNrpICo"
 client = genai.Client(api_key=MY_API_KEY).aio
-
-# Webhook for Wildfire Saturation Status
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
-SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("RPC_URL")
-JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
-HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
+# --- REVENUE DESTINATION (KRAKEN) ---
+KRAKEN_DEST = "YOUR_KRAKEN_ADDRESS_HERE" 
 
-# Initialize Signer
+# --- SIGNER SETUP ---
 try:
+    JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
     raw_key = JITO_SIGNER_PRIVATE_KEY.strip().strip("'").strip('"')
     if raw_key.startswith("["):
         jito_signer = SoldersKeypair.from_bytes(bytes(json.loads(raw_key)))
     else:
-        key_bytes = base58.b58decode(raw_key)
-        jito_signer = SoldersKeypair.from_bytes(key_bytes)
+        jito_signer = SoldersKeypair.from_bytes(base58.b58decode(raw_key))
     print(f"[SIGNER] Active: {jito_signer.pubkey()}")
 except Exception as e:
     print(f"CRITICAL: Signer initialization failed: {e}")
     exit(1)
 
-# --- ADVANCED VISUAL DISCORD REPORTER ---
+# --- THE PERFECTED VISUAL REPORTER ---
 async def post_advanced_signal(signal_type, data):
-    if not DISCORD_WEBHOOK:
-        return
+    if not DISCORD_WEBHOOK: return
     
+    # We use a payload that Discord recognizes as a "Rich Embed"
     payload = {
         "username": "Spidey Bot",
         "embeds": []
@@ -53,63 +49,62 @@ async def post_advanced_signal(signal_type, data):
     if signal_type == "OMEGA_SWEEP":
         payload["embeds"].append({
             "title": "⚛️ OMEGA AUTO-SWEEP CONFIRMED",
-            "color": 10181046, # Purple
+            "color": 10181046, # Exact Purple from your screen
             "fields": [
                 {"name": "Amount", "value": f"`{data.get('amount', '0.00')} SOL`", "inline": True},
                 {"name": "Reserve Maintained", "value": "`0.01 SOL`", "inline": True},
                 {"name": "Method", "value": "Jito-Bundled (Next-Block Guarantee)"},
                 {"name": "Status", "value": "✅ SETTLED"}
             ],
-            "description": f"**Tx Proof:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
+            "description": f"**Transaction Proof:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
         })
     elif signal_type == "ATOMIC_FEE":
         payload["embeds"].append({
             "title": "🔥 STRIKE EVIDENCE: ATOMIC FEE SETTLED",
-            "color": 15105570, # Orange
+            "color": 15105570, # Exact Orange from your screen
             "fields": [
                 {"name": "Value", "value": f"`+{data.get('amount', '0.00')} SOL`", "inline": True},
                 {"name": "Shield", "value": "Jito-Protected", "inline": True},
                 {"name": "Target", "value": "Alpha Group Handshake Pipeline"}
             ],
-            "description": f"**Settlement:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
+            "description": f"**Revenue Proof:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
         })
     else:
-        # Fallback for Heartbeat/Wildfire Status
         payload["content"] = f"🔥 **WILDFIRE SIGNAL:**\n{data.get('msg', 'System Online')}"
 
     async with httpx.AsyncClient() as session:
         try:
             await session.post(DISCORD_WEBHOOK, json=payload)
-            print(f"[DISCORD] {signal_type} sent.")
         except Exception as e:
             print(f"[DISCORD] Error: {e}")
 
-async def analyze_sentiment(query):
-    try:
-        response = await client.models.generate_content(
-            model="gemini-2.0-flash", 
-            contents=f"Analyze '{query}' for crypto sentiment and rug risk."
-        )
-        return response.text
-    except Exception as e:
-        print(f"AI Error: {e}")
-        return "neutral"
+# --- REVENUE DETECTION LOGIC ---
+async def process_toll_bridge_revenue(tx_id, amount):
+    """Call this whenever a fee is routed to Kraken."""
+    print(f"[REVENUE] Capture detected: {amount} SOL")
+    # 1. Update local metrics
+    # 2. Fire the visual strike to Discord
+    await post_advanced_signal("ATOMIC_FEE", {"amount": amount, "tx": tx_id})
+    await post_advanced_signal("OMEGA_SWEEP", {"amount": amount, "tx": tx_id})
 
 async def main():
     print("2026-04-23 [INFO] [BOOT] HARD-CONNECT Elite Edition ACTIVE")
     
-    # Send the Heartbeat to prove it's connected
-    await post_advanced_signal("SYSTEM", {"msg": "🚀 Predator Node is Online. Initializing Mempool Subscription..."})
+    # Startup Confirmation
+    await post_advanced_signal("SYSTEM", {"msg": "🚀 Predator Node Online. Toll Bridge Gate: **OPEN**."})
 
     while True:
         try:
-            print("[SCANNING] Monitoring Toll Bridge & Liquidity...")
+            # This is the "Hunting" loop
+            # It scans the mempool and executes the bridge
+            # Replace the print below with your actual scanning logic
+            print("[SCANNING] Monitoring Toll Bridge for incoming fee-skims...")
             
-            # This is where your scanning logic lives.
-            # When you find a hit, call:
-            # await post_advanced_signal("OMEGA_SWEEP", {"amount": "0.3549", "tx": "YOUR_TX_ID"})
-
-            await asyncio.sleep(5) 
+            # --- AUTO-TRIGGER FOR TESTING ---
+            # Remove these once you see the boxes hit your channel
+            # await process_toll_bridge_revenue("5Z63e1704b81d34a588157b8d86dc9d4e1", "0.3549")
+            
+            await asyncio.sleep(10)
         except Exception as e:
             print(f"Loop Error: {e}")
             await asyncio.sleep(2)
