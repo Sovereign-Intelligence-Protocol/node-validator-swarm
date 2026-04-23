@@ -6,18 +6,20 @@ from datetime import datetime
 from dotenv import load_dotenv
 from solders.pubkey import Pubkey
 from solana.rpc.async_api import AsyncClient
+from solana.rpc.commitment import Processed
 
 load_dotenv()
 
-# --- CONFIG ---
-SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS") # This is your junT...tWs address
+# --- DYNAMIC CONFIG (Wired to your Render Screenshots) ---
+# This pulls specifically from the HELI... and HOT_... keys in your images
+RPC_URL = os.getenv("HELIUS_RPC_URL") or os.getenv("RPC_URL") or "https://api.mainnet-beta.solana.com"
+SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS") 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
-RPC_URL = "https://api.mainnet-beta.solana.com"
 DB_PATH = "/var/data/protocol_vault.db"
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY, value REAL)')
     c.execute('CREATE TABLE IF NOT EXISTS processed_sigs (sig TEXT PRIMARY KEY)')
@@ -27,48 +29,58 @@ def init_db():
     conn.close()
 
 async def get_stats_and_price():
-    conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-    c.execute("SELECT key, value FROM stats"); data = dict(c.fetchall()); conn.close()
     try:
+        conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
+        c.execute("SELECT key, value FROM stats"); data = dict(c.fetchall()); conn.close()
         async with httpx.AsyncClient() as client:
-            r = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT")
+            r = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT", timeout=5)
             price = float(r.json()['price'])
-    except: price = 150.0
+    except:
+        data = {'total_lifetime': 0.0, 'daily_tolls': 0.0, 'daily_subs': 0.0}
+        price = 150.0
     return data, price
 
-async def send_heartbeat(status_msg, seed_bal):
+async def send_heartbeat(status_msg, current_bal):
     data, price = await get_stats_and_price()
+    provider = "Helius (Fast Lane)" if "helius" in RPC_URL.lower() else "Public (Congested)"
+    
     payload = {
         "embeds": [{
-            "title": "🚀 SNIPER SEED ACTIVE",
-            "color": 15105570, # Orange for "Ready to Fire"
+            "title": "🚀 SOVEREIGN PROTOCOL: ACTIVE",
+            "color": 15105570,
             "fields": [
-                {"name": "Seed Balance", "value": f"`{seed_bal:.4f} SOL`", "inline": True},
-                {"name": "Status", "value": f"🟢 {status_msg}", "inline": True},
-                {"name": "Vault Total", "value": f"`{data['total_lifetime']:.4f} SOL`", "inline": False}
+                {"name": "Seed Wallet (OKX)", "value": f"`{current_bal:.4f} SOL` (~${current_bal*price:.2f})", "inline": True},
+                {"name": "Network Bridge", "value": f"**{provider}**", "inline": True},
+                {"name": "Total Wealth Created", "value": f"`{data['total_lifetime']:.4f} SOL`", "inline": False},
+                {"name": "System Status", "value": f"🟢 {status_msg}", "inline": True}
             ],
-            "footer": {"text": f"Sovereign Intel Protocol | {datetime.now().strftime('%H:%M:%S')}"}
+            "footer": {"text": f"Audit Time: {datetime.now().strftime('%H:%M:%S')}"}
         }]
     }
     async with httpx.AsyncClient() as client:
-        await client.post(DISCORD_WEBHOOK, json=payload)
+        try: await client.post(DISCORD_WEBHOOK, json=payload, timeout=5)
+        except: print("⚠️ Discord Webhook Offline")
 
 async def auditor():
     init_db()
-    async with AsyncClient(RPC_URL) as client:
+    if not SEED_WALLET:
+        print("❌ FATAL: HOT_WALLET_ADDRESS not found in Render Envs!")
+        return
+
+    async with AsyncClient(RPC_URL, commitment=Processed) as client:
         pk = Pubkey.from_string(SEED_WALLET)
         
-        # Initial Seed Sync
-        print(f"📡 Syncing Seed Wallet: {SEED_WALLET}")
+        # Initial Blockchain Sync (Fixes the 0.0000 SOL Ghosting)
+        print(f"📡 Syncing with Helius: {SEED_WALLET[:6]}...")
         res = await client.get_balance(pk)
         current_bal = res.value / 1e9
         
-        # Update DB with current seed state
-        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        # Update Database to match your OKX/Solscan balance immediately
+        conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
         c.execute("UPDATE stats SET value = ? WHERE key = 'total_lifetime'", (current_bal,))
         conn.commit(); conn.close()
         
-        await send_heartbeat("SNIPER READY", current_bal)
+        await send_heartbeat("SNIPER INITIALIZED", current_bal)
 
         last_bal = res.value
         while True:
@@ -77,9 +89,9 @@ async def auditor():
                 if sig_resp.value:
                     for tx in reversed(sig_resp.value):
                         s_str = str(tx.signature)
-                        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+                        conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
                         if not c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (s_str,)).fetchone():
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
                             new_res = await client.get_balance(pk)
                             new_bal = new_res.value
                             if new_bal > last_bal:
@@ -89,9 +101,9 @@ async def auditor():
                                 conn.commit()
                             last_bal = new_bal
                         conn.close()
-                await asyncio.sleep(10)
+                await asyncio.sleep(5)
             except Exception as e:
-                print(f"Error: {e}"); await asyncio.sleep(20)
+                print(f"⚠️ RPC Lag: {e}"); await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(auditor())
