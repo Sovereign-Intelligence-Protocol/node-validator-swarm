@@ -11,8 +11,7 @@ from solana.rpc.commitment import Processed
 # Load all Render Environment Variables
 load_dotenv()
 
-# --- CONFIGURATION (Mapped to your Dashboard) ---
-# Hunts for Helius first to stay in the "Fast Lane"
+# --- CONFIGURATION ---
 RPC_URL = (
     os.getenv("HELIUS_RPC_URL") or 
     os.getenv("SOLANA_RPC_URL") or 
@@ -21,7 +20,7 @@ RPC_URL = (
 JITO_ENGINE = os.getenv("JITO_BLOCK_ENGINE_URL")
 SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS") 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
-DB_PATH = "protocol_vault.db" # Local root for Render stability
+DB_PATH = "protocol_vault.db" 
 
 def init_db():
     try:
@@ -50,14 +49,12 @@ async def get_stats_and_price():
 
 async def send_heartbeat(status_msg, current_bal):
     data, price = await get_stats_and_price()
-    
-    # Logic to confirm Helius vs Public for the Discord label
     is_helius = "helius" in RPC_URL.lower()
     bridge_label = "Helius + Jito (Fast Lane) ⚡" if is_helius and JITO_ENGINE else "Public (Congested) 🐌"
     
     payload = {
         "embeds": [{
-            "title": "⚡ SOVEREIGN PROTOCOL: PERFECTED",
+            "title": "⚡ SOVEREIGN PROTOCOL: ACTIVE",
             "color": 3066993,
             "fields": [
                 {"name": "Seed Wallet (OKX)", "value": f"`{current_bal:.4f} SOL` (~${current_bal*price:.2f})", "inline": True},
@@ -70,7 +67,7 @@ async def send_heartbeat(status_msg, current_bal):
     }
     async with httpx.AsyncClient() as client:
         try: await client.post(DISCORD_WEBHOOK, json=payload, timeout=5)
-        except: pass
+        except: print("⚠️ Discord Webhook unreachable")
 
 async def auditor():
     init_db()
@@ -81,28 +78,26 @@ async def auditor():
     async with AsyncClient(RPC_URL, commitment=Processed) as client:
         pk = Pubkey.from_string(SEED_WALLET)
         
-        # Immediate Balance Sync to recognize your 0.3649 SOL
         try:
             res = await client.get_balance(pk)
             current_bal_sol = res.value / 1e9
             await send_heartbeat("ENGINE ACTIVE", current_bal_sol)
             last_bal = res.value
-        except:
+        except Exception as e:
+            print(f"⚠️ RPC Lag on startup: {e}")
             last_bal = 0
 
         while True:
             try:
-                # Scans last 5 signatures for new wealth/tolls
                 sig_resp = await client.get_signatures_for_address(pk, limit=5)
                 if sig_resp and sig_resp.value:
                     for tx in reversed(sig_resp.value):
                         s_str = str(tx.signature)
                         conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
                         if not c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (s_str,)).fetchone():
-                            await asyncio.sleep(2) # Buffer for chain sync
+                            await asyncio.sleep(2)
                             new_res = await client.get_balance(pk)
                             new_bal = new_res.value
-                            
                             if new_bal > last_bal:
                                 diff = (new_bal - last_bal) / 1e9
                                 c.execute("INSERT INTO processed_sigs VALUES (?)", (s_str,))
@@ -111,8 +106,10 @@ async def auditor():
                             last_bal = new_bal
                         conn.close()
                 await asyncio.sleep(5)
-            except Exception:
-                await asyncio.sleep(10) # Auto-retry on RPC exceptions
+            except Exception as e:
+                # This 10s wait is what prevents the Discord from going silent
+                print(f"⚠️ RPC Exception, retrying in 10s: {e}")
+                await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(auditor())
