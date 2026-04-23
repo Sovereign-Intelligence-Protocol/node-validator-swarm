@@ -1,6 +1,6 @@
-python-dotenv
-httpx
+google-genai
 solana
 solders
+httpx
+python-dotenv
 base58
-google-genai
