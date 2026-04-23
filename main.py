@@ -8,33 +8,36 @@ from solders.pubkey import Pubkey
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Processed
 
-# Load Environment Variables from Render
+# Load all variables from Render's Environment tab
 load_dotenv()
 
-# --- CONFIGURATION (Mapped to your Render Envs) ---
-# This prioritized your Helius and Jito keys for the "Fast Lane"
-RPC_URL = os.getenv("HELIUS_RPC_URL") or os.getenv("SOLANA_RPC_URL") or "https://api.mainnet-beta.solana.com"
+# --- DYNAMIC CONFIGURATION ---
+# This ensures we find your Helius RPC even if the name varies slightly
+RPC_URL = (
+    os.getenv("HELIUS_RPC_URL") or 
+    os.getenv("SOLANA_RPC_URL") or 
+    os.getenv("RPC_URL") or 
+    "https://api.mainnet-beta.solana.com"
+)
 JITO_ENGINE = os.getenv("JITO_BLOCK_ENGINE_URL")
 SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS") 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 DB_PATH = "/var/data/protocol_vault.db"
 
-# --- DATABASE ENGINE ---
+# --- DATABASE SETUP ---
 def init_db():
     try:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        # timeout=10 prevents the bot from crashing on Render's network storage
         conn = sqlite3.connect(DB_PATH, timeout=10)
         c = conn.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY, value REAL)')
         c.execute('CREATE TABLE IF NOT EXISTS processed_sigs (sig TEXT PRIMARY KEY)')
-        # Ensure counters exist
         for key in ['total_lifetime', 'daily_tolls', 'daily_subs']:
             c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES (?, 0.0)", (key,))
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"❌ DB Error: {e}")
+        print(f"❌ Database Init Failed: {e}")
 
 async def get_stats_and_price():
     try:
@@ -45,56 +48,58 @@ async def get_stats_and_price():
             price = float(r.json()['price'])
     except:
         data = {'total_lifetime': 0.0, 'daily_tolls': 0.0, 'daily_subs': 0.0}
-        price = 150.0
+        price = 145.0 # Fallback
     return data, price
 
-# --- NOTIFICATION SYSTEM ---
+# --- MESSAGING ENGINE ---
 async def send_heartbeat(status_msg, current_bal):
     data, price = await get_stats_and_price()
     
-    # Identify the bridge type for the Discord card
-    is_helius = "helius" in RPC_URL.lower()
-    network_label = "Helius + Jito (Fast Lane) ⚡" if is_helius and JITO_ENGINE else "Public (Congested) 🐌"
+    # Confirm bridge status for the Discord UI
+    using_helius = "helius" in RPC_URL.lower()
+    bridge_label = "Helius + Jito (Fast) ⚡" if using_helius and JITO_ENGINE else "Public (Slow) 🐌"
     
     payload = {
         "embeds": [{
-            "title": "⚡ SOVEREIGN INTEL PROTOCOL",
+            "title": "⚡ SOVEREIGN INTEL PROTOCOL v4.2",
             "color": 3066993,
             "fields": [
                 {"name": "Seed Wallet (OKX)", "value": f"`{current_bal:.4f} SOL` (~${current_bal*price:.2f})", "inline": True},
-                {"name": "Network Bridge", "value": f"**{network_label}**", "inline": True},
-                {"name": "Wealth Created", "value": f"`{data['total_lifetime']:.4f} SOL`", "inline": False},
+                {"name": "Network Bridge", "value": f"**{bridge_label}**", "inline": True},
+                {"name": "Wealth Generated", "value": f"`{data['total_lifetime']:.4f} SOL`", "inline": False},
                 {"name": "System Status", "value": f"🟢 {status_msg}", "inline": True}
             ],
-            "footer": {"text": f"Audit Cycle Active | {datetime.now().strftime('%H:%M:%S')}"}
+            "footer": {"text": f"Sovereign Intelligence | {datetime.now().strftime('%H:%M:%S')}"}
         }]
     }
     async with httpx.AsyncClient() as client:
         try: await client.post(DISCORD_WEBHOOK, json=payload, timeout=5)
-        except: print("⚠️ Webhook Failed")
+        except: print("⚠️ Discord Webhook unreachable")
 
-# --- AUDIT ENGINE ---
+# --- MAIN AUDIT ENGINE ---
 async def auditor():
     init_db()
-    if not SEED_WALLET or not DISCORD_WEBHOOK:
-        print("❌ FATAL: Missing Environment Variables in Render!")
+    if not SEED_WALLET:
+        print("❌ FATAL: HOT_WALLET_ADDRESS not found in Render Envs!")
         return
 
     async with AsyncClient(RPC_URL, commitment=Processed) as client:
         pk = Pubkey.from_string(SEED_WALLET)
         
-        # FORCED INITIAL SYNC: This fixes the 0.0000 SOL display
-        print(f"📡 Syncing with Blockchain: {SEED_WALLET[:6]}...")
-        res = await client.get_balance(pk)
-        current_bal_sol = res.value / 1e9
-        
-        # We start tracking wealth from this point forward
-        await send_heartbeat("SNIPER INITIALIZED", current_bal_sol)
+        # Initial Balance Sync to clear the 0.0000 SOL bug
+        print(f"📡 Syncing with Seed Wallet: {SEED_WALLET[:6]}...")
+        try:
+            res = await client.get_balance(pk)
+            current_bal_sol = res.value / 1e9
+            await send_heartbeat("ENGINE START: MONITORING ACTIVE", current_bal_sol)
+            last_bal = res.value
+        except Exception as e:
+            print(f"⚠️ RPC Exception during sync: {e}")
+            last_bal = 0
 
-        last_bal = res.value
         while True:
             try:
-                # Polling recent transactions
+                # Check for new transaction signatures
                 sig_resp = await client.get_signatures_for_address(pk, limit=5)
                 if sig_resp.value:
                     for tx in reversed(sig_resp.value):
@@ -103,28 +108,27 @@ async def auditor():
                         c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (s_str,))
                         
                         if not c.fetchone():
-                            # New transaction detected
-                            await asyncio.sleep(1.5) # Wait for balance to settle
+                            # New activity detected!
+                            await asyncio.sleep(2) # Buffer for balance update
                             new_res = await client.get_balance(pk)
                             new_bal = new_res.value
                             
                             if new_bal > last_bal:
-                                # New revenue detected!
+                                # This is actual wealth/toll creation
                                 diff = (new_bal - last_bal) / 1e9
                                 c.execute("INSERT INTO processed_sigs VALUES (?)", (s_str,))
                                 c.execute("UPDATE stats SET value = value + ? WHERE key = 'total_lifetime'", (diff,))
                                 conn.commit()
-                                print(f"💰 Revenue Detected: {diff} SOL")
+                                print(f"💰 Wealth Created: {diff} SOL")
                             
                             last_bal = new_bal
                         conn.close()
                 
-                # High-frequency check (5 seconds) for sniper agility
-                await asyncio.sleep(5)
+                await asyncio.sleep(5) # High-speed cycle
             except Exception as e:
-                print(f"⚠️ RPC Lag: {e}")
+                print(f"⚠️ Cycle Lag: {e}")
                 await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    print("🚀 Protocol Launching...")
+    print("🚀 Initializing Sovereign Protocol...")
     asyncio.run(auditor())
