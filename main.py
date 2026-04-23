@@ -10,7 +10,7 @@ load_dotenv()
 HOT_WALLET = os.getenv("HOT_WALLET_ADDRESS")
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 RPC_URL = "https://api.mainnet-beta.solana.com"
-DB_PATH = "/var/data/protocol_vault.db" # Lives on the Persistent Disk
+DB_PATH = "/var/data/protocol_vault.db" 
 
 # --- DATABASE SETUP ---
 def init_db():
@@ -19,7 +19,6 @@ def init_db():
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY, value REAL)')
     c.execute('CREATE TABLE IF NOT EXISTS processed_sigs (sig TEXT PRIMARY KEY)')
-    # Initialize if new
     for key in ['total_lifetime', 'daily_tolls', 'daily_subs']:
         c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES (?, 0.0)", (key,))
     conn.commit()
@@ -37,20 +36,22 @@ def record_tx(sig, amount, category_type):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO processed_sigs (sig) VALUES (?)", (sig,))
+        # Convert signature object to string for SQLite
+        sig_str = str(sig)
+        c.execute("INSERT INTO processed_sigs (sig) VALUES (?)", (sig_str,))
         stat_key = "daily_subs" if category_type == "sub" else "daily_tolls"
         c.execute("UPDATE stats SET value = value + ? WHERE key = ?", (amount, stat_key))
         c.execute("UPDATE stats SET value = value + ? WHERE key = 'total_lifetime'", (amount,))
         conn.commit()
         return True
-    except sqlite3.IntegrityError: return False # Already processed
+    except sqlite3.IntegrityError: return False 
     finally: conn.close()
 
 # --- REVENUE TRACKING ---
 async def get_sol_price():
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT")
+            r = await client.get("https://api.binance.com/api/v3/ticker_price?symbol=SOLUSDT")
             return float(r.json()['price'])
     except: return 150.0
 
@@ -79,7 +80,10 @@ async def auditor_loop():
     init_db()
     async with AsyncClient(RPC_URL) as client:
         pubkey = Pubkey.from_string(HOT_WALLET)
-        last_check_bal = (await client.get_balance(pubkey)).value
+        bal_resp = await client.get_balance(pubkey)
+        last_check_bal = bal_resp.value
+        
+        print(f"🕵️ Auditor Active for {HOT_WALLET}")
         
         while True:
             try:
@@ -88,13 +92,12 @@ async def auditor_loop():
 
                 for tx in reversed(sig_resp.value):
                     sig = tx.signature
-                    # Check the database if we've seen this signature
                     conn = sqlite3.connect(DB_PATH); c = conn.cursor()
-                    c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (sig,))
+                    c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (str(sig),))
                     exists = c.fetchone(); conn.close()
                     
                     if not exists:
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(1) # Small buffer
                         new_bal = (await client.get_balance(pubkey)).value
                         if new_bal > last_check_bal:
                             diff = (new_bal - last_check_bal) / 1e9
@@ -106,7 +109,9 @@ async def auditor_loop():
                         
                         last_check_bal = new_bal
                 await asyncio.sleep(5)
-            except: await asyncio.sleep(10)
+            except Exception as e:
+                print(f"Error in auditor: {e}")
+                await asyncio.sleep(10)
 
 async def scalper_engine():
     while True:
