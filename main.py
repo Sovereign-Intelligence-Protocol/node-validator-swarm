@@ -1,5 +1,5 @@
-# Aggressive Sniper Swarm - Final Migration + Advanced Reporting
-# Refactored for google-genai SDK (Gemini 2.0 Flash)
+# Aggressive Sniper Swarm - Omega Edition
+# Unified Code: Gemini 2.0 SDK + Advanced Visual Reporting
 import os
 import asyncio
 import json
@@ -40,45 +40,55 @@ except Exception as e:
     print(f"CRITICAL: Signer initialization failed: {e}")
     exit(1)
 
-# --- ADVANCED DISCORD REPORTER (The "Toll Bridge" Voice) ---
+# --- ADVANCED VISUAL DISCORD REPORTER ---
 async def post_advanced_signal(signal_type, data):
     if not DISCORD_WEBHOOK:
         return
     
-    # Matching the specific formatting from your "Omega" screenshots
+    payload = {
+        "username": "Spidey Bot",
+        "embeds": []
+    }
+
     if signal_type == "OMEGA_SWEEP":
-        content = (
-            f"⚛️ **OMEGA AUTO-SWEEP CONFIRMED**\n"
-            f"**Amount:** `{data['amount']} SOL`\n"
-            f"**Reserve Maintained:** `0.01 SOL`\n"
-            f"**Method:** Jito-Bundled (Next-Block Guarantee)\n"
-            f"**Tx:** https://solscan.io/tx/{data['tx']}\n"
-            f"**Status:** `SETTLED`"
-        )
+        payload["embeds"].append({
+            "title": "⚛️ OMEGA AUTO-SWEEP CONFIRMED",
+            "color": 10181046, # Purple
+            "fields": [
+                {"name": "Amount", "value": f"`{data.get('amount', '0.00')} SOL`", "inline": True},
+                {"name": "Reserve Maintained", "value": "`0.01 SOL`", "inline": True},
+                {"name": "Method", "value": "Jito-Bundled (Next-Block Guarantee)"},
+                {"name": "Status", "value": "✅ SETTLED"}
+            ],
+            "description": f"**Tx Proof:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
+        })
     elif signal_type == "ATOMIC_FEE":
-        content = (
-            f"🔥 **STRIKE EVIDENCE: ATOMIC FEE SETTLED**\n"
-            f"**Value:** `+{data['amount']} SOL`\n"
-            f"**Shield:** Jito-Protected\n"
-            f"**Proof:** https://solscan.io/tx/{data['tx']}\n"
-            f"**Target:** Alpha Group Handshake Pipeline"
-        )
+        payload["embeds"].append({
+            "title": "🔥 STRIKE EVIDENCE: ATOMIC FEE SETTLED",
+            "color": 15105570, # Orange
+            "fields": [
+                {"name": "Value", "value": f"`+{data.get('amount', '0.00')} SOL`", "inline": True},
+                {"name": "Shield", "value": "Jito-Protected", "inline": True},
+                {"name": "Target", "value": "Alpha Group Handshake Pipeline"}
+            ],
+            "description": f"**Settlement:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
+        })
     else:
-        content = f"🔥 **WILDFIRE SIGNAL:**\n{data.get('msg', 'System Heartbeat')}"
+        # Fallback for Heartbeat/Wildfire Status
+        payload["content"] = f"🔥 **WILDFIRE SIGNAL:**\n{data.get('msg', 'System Online')}"
 
     async with httpx.AsyncClient() as session:
         try:
-            await session.post(DISCORD_WEBHOOK, json={"content": content})
-            print(f"[DISCORD] {signal_type} broadcasted.")
+            await session.post(DISCORD_WEBHOOK, json=payload)
+            print(f"[DISCORD] {signal_type} sent.")
         except Exception as e:
-            print(f"[DISCORD] Broadcast Error: {e}")
+            print(f"[DISCORD] Error: {e}")
 
 async def analyze_sentiment(query):
     try:
-        prompt = f"Analyze '{query}' for crypto sentiment and rug risk."
         response = await client.models.generate_content(
             model="gemini-2.0-flash", 
-            contents=prompt
+            contents=f"Analyze '{query}' for crypto sentiment and rug risk."
         )
         return response.text
     except Exception as e:
@@ -88,17 +98,17 @@ async def analyze_sentiment(query):
 async def main():
     print("2026-04-23 [INFO] [BOOT] HARD-CONNECT Elite Edition ACTIVE")
     
-    # Heartbeat: Confirmation that the bot is back in the channel
+    # Send the Heartbeat to prove it's connected
     await post_advanced_signal("SYSTEM", {"msg": "🚀 Predator Node is Online. Initializing Mempool Subscription..."})
 
     while True:
         try:
-            print("[SCANNING] Checking liquidity pairs & Toll Bridge traffic...")
+            print("[SCANNING] Monitoring Toll Bridge & Liquidity...")
             
-            # --- EXAMPLE USAGE FOR TOLL BRIDGE REPORTS ---
-            # To trigger an Atomic Fee report:
-            # await post_advanced_signal("ATOMIC_FEE", {"amount": "0.3549", "tx": "5Z63e..."})
-            
+            # This is where your scanning logic lives.
+            # When you find a hit, call:
+            # await post_advanced_signal("OMEGA_SWEEP", {"amount": "0.3549", "tx": "YOUR_TX_ID"})
+
             await asyncio.sleep(5) 
         except Exception as e:
             print(f"Loop Error: {e}")
