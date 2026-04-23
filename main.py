@@ -2,6 +2,7 @@ import os
 import asyncio
 import httpx
 import sqlite3
+import base58
 from datetime import datetime
 from dotenv import load_dotenv
 from solders.pubkey import Pubkey
@@ -10,11 +11,11 @@ from solana.rpc.commitment import Processed
 
 load_dotenv()
 
-# --- DYNAMIC CONFIG (Wired to your Render Screenshots) ---
-# This pulls specifically from the HELI... and HOT_... keys in your images
+# --- CONFIG FROM YOUR RENDER ENVS ---
 RPC_URL = os.getenv("HELIUS_RPC_URL") or os.getenv("RPC_URL") or "https://api.mainnet-beta.solana.com"
 SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS") 
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
+JITO_ENGINE = os.getenv("JITO_BLOCK_ENGINE_URL") # From your screenshot
 DB_PATH = "/var/data/protocol_vault.db"
 
 def init_db():
@@ -25,8 +26,7 @@ def init_db():
     c.execute('CREATE TABLE IF NOT EXISTS processed_sigs (sig TEXT PRIMARY KEY)')
     for key in ['total_lifetime', 'daily_tolls', 'daily_subs']:
         c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES (?, 0.0)", (key,))
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 async def get_stats_and_price():
     try:
@@ -42,19 +42,19 @@ async def get_stats_and_price():
 
 async def send_heartbeat(status_msg, current_bal):
     data, price = await get_stats_and_price()
-    provider = "Helius (Fast Lane)" if "helius" in RPC_URL.lower() else "Public (Congested)"
+    provider = "Helius + Jito" if JITO_ENGINE else "Public"
     
     payload = {
         "embeds": [{
-            "title": "🚀 SOVEREIGN PROTOCOL: ACTIVE",
-            "color": 15105570,
+            "title": "⚡ SOVEREIGN INTEL: LIVE",
+            "color": 3066993,
             "fields": [
-                {"name": "Seed Wallet (OKX)", "value": f"`{current_bal:.4f} SOL` (~${current_bal*price:.2f})", "inline": True},
-                {"name": "Network Bridge", "value": f"**{provider}**", "inline": True},
-                {"name": "Total Wealth Created", "value": f"`{data['total_lifetime']:.4f} SOL`", "inline": False},
-                {"name": "System Status", "value": f"🟢 {status_msg}", "inline": True}
+                {"name": "Seed Wallet", "value": f"`{current_bal:.4f} SOL`", "inline": True},
+                {"name": "MEV Protection", "value": f"**{provider}**", "inline": True},
+                {"name": "Total Recorded", "value": f"`{data['total_lifetime']:.4f} SOL`", "inline": False},
+                {"name": "Status", "value": f"🟢 {status_msg}", "inline": True}
             ],
-            "footer": {"text": f"Audit Time: {datetime.now().strftime('%H:%M:%S')}"}
+            "footer": {"text": f"Sovereign Intelligence Protocol | {datetime.now().strftime('%H:%M:%S')}"}
         }]
     }
     async with httpx.AsyncClient() as client:
@@ -63,24 +63,21 @@ async def send_heartbeat(status_msg, current_bal):
 
 async def auditor():
     init_db()
-    if not SEED_WALLET:
-        print("❌ FATAL: HOT_WALLET_ADDRESS not found in Render Envs!")
-        return
+    if not SEED_WALLET: return
 
     async with AsyncClient(RPC_URL, commitment=Processed) as client:
         pk = Pubkey.from_string(SEED_WALLET)
         
-        # Initial Blockchain Sync (Fixes the 0.0000 SOL Ghosting)
-        print(f"📡 Syncing with Helius: {SEED_WALLET[:6]}...")
+        # Initial Force Sync with your OKX balance
+        print(f"📡 Syncing with Seed: {SEED_WALLET[:6]}")
         res = await client.get_balance(pk)
         current_bal = res.value / 1e9
         
-        # Update Database to match your OKX/Solscan balance immediately
         conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
         c.execute("UPDATE stats SET value = ? WHERE key = 'total_lifetime'", (current_bal,))
         conn.commit(); conn.close()
         
-        await send_heartbeat("SNIPER INITIALIZED", current_bal)
+        await send_heartbeat("READY TO SNIPE", current_bal)
 
         last_bal = res.value
         while True:
@@ -103,7 +100,7 @@ async def auditor():
                         conn.close()
                 await asyncio.sleep(5)
             except Exception as e:
-                print(f"⚠️ RPC Lag: {e}"); await asyncio.sleep(10)
+                print(f"⚠️ Lag: {e}"); await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(auditor())
