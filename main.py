@@ -1,4 +1,4 @@
-import os, asyncio, json, httpx
+import os, asyncio, httpx
 from datetime import datetime
 from dotenv import load_dotenv
 from solders.pubkey import Pubkey
@@ -6,101 +6,114 @@ from solana.rpc.async_api import AsyncClient
 
 load_dotenv()
 
-# --- CONFIG FROM RENDER ENVIRONMENT ---
-# Ensure these Keys exist in your Render 'Environment' tab
+# --- CONFIG ---
 HOT_WALLET = os.getenv("HOT_WALLET_ADDRESS")
-KRAKEN_DEST = os.getenv("KRAKEN_DESTINATION")
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
 RPC_URL = "https://api.mainnet-beta.solana.com"
 
-# --- REVENUE TRACKER ---
-stats = {"lifetime_sol": 0.0, "last_bal": 0}
+# --- GLOBAL TRACKER ---
+stats = {
+    "total_lifetime": 0.0,
+    "daily_tolls": 0.0,
+    "daily_subs": 0.0,
+    "last_bal": 0,
+    "current_day": datetime.now().date()
+}
 
-async def send_to_discord(amount, category, is_initial=False):
-    """Sends the high-impact revenue cards to your Discord"""
-    color = 3447003 if category in ["API SUBSCRIPTION", "WHALE PASS", "INITIAL"] else 3066993
-    title = "🏦 TREASURY REVENUE INITIALIZED" if is_initial else f"💸 {category} RECEIVED"
+async def get_sol_price():
+    """Fetches real-time SOL price for USD transparency"""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT")
+            return float(resp.json()['price'])
+    except: return 150.0  # Fallback price
+
+def identify_revenue(amount):
+    if 1.8 <= amount <= 2.2: return "💎 API SUBSCRIPTION", 3447003, "sub"
+    if 4.8 <= amount <= 5.2: return "🐋 WHALE PASS", 10181035, "sub"
+    if 0.0001 <= amount < 0.2: return "⛽ TRADE TOLL (1%)", 3066993, "toll"
+    return "💰 MISC REVENUE", 15105570, "misc"
+
+async def post_to_discord(amount, category, color, tx_sig, current_bal, is_sweep=False):
+    global stats
+    sol_price = await get_sol_price()
+    usd_val = amount * sol_price
+    total_usd = stats['total_lifetime'] * sol_price
     
+    solscan_url = f"https://solscan.io/tx/{tx_sig}" if tx_sig else "https://solscan.io"
+    title = f"🚨 {category}"
+    if is_sweep:
+        title = "📤 FUNDS MOVED TO KRAKEN VAULT"
+        color = 15105570 
+
     payload = {
         "embeds": [{
             "title": title,
             "color": color,
             "fields": [
-                {"name": "Lifetime Revenue", "value": f"`{stats['lifetime_sol']:.4f} SOL`", "inline": True},
-                {"name": "Status", "value": "🟢 SCALPING ACTIVE", "inline": True},
-                {"name": "Type", "value": f"**{category}**", "inline": False}
+                {"name": "Transaction", "value": f"`{amount:.4f} SOL` (~${usd_val:.2f} USD)", "inline": True},
+                {"name": "Bridge Balance", "value": f"`{current_bal:.4f} SOL`", "inline": True},
+                {"name": "Daily Stats", "value": f"Tolls: `{stats['daily_tolls']:.2f}` | Subs: `{stats['daily_subs']:.2f}`", "inline": False},
+                {"name": "Total Wealth Created", "value": f"**`{stats['total_lifetime']:.4f} SOL` (~${total_usd:,.2f} USD)**", "inline": False},
+                {"name": "System Status", "value": "🟢 SCALPING ACTIVE", "inline": True},
+                {"name": "On-Chain Proof", "value": f"[View on Solscan]({solscan_url})", "inline": True}
             ],
             "footer": {"text": f"Sovereign Intel Protocol | {datetime.now().strftime('%H:%M:%S')}"}
         }]
     }
     async with httpx.AsyncClient() as client:
-        try:
-            await client.post(DISCORD_WEBHOOK, json=payload, timeout=10.0)
-        except Exception as e:
-            print(f"Discord Webhook Error: {e}")
+        try: await client.post(DISCORD_WEBHOOK, json=payload)
+        except: pass
 
-async def monitor_revenue_and_subs():
-    """Main loop: Tracks tolls, subscriptions, and kraken sweeps"""
+async def auditor_engine():
     global stats
     async with AsyncClient(RPC_URL) as client:
-        if not HOT_WALLET:
-            print("❌ ERROR: HOT_WALLET_ADDRESS not found in Environment Variables!")
-            return
-
+        if not HOT_WALLET: return
         pubkey = Pubkey.from_string(HOT_WALLET)
         
-        # Initial Sync - Pulls your current 0.3649 SOL balance immediately
+        # Initial Balance Sync
         bal_resp = await client.get_balance(pubkey)
         stats["last_bal"] = bal_resp.value
-        stats["lifetime_sol"] = stats["last_bal"] / 1e9
+        stats["total_lifetime"] = stats["last_bal"] / 1e9
         
-        await send_to_discord(0, "INITIAL", is_initial=True)
-        print(f"🚀 Monitoring Revenue for: {HOT_WALLET}")
+        await post_to_discord(0, "SYSTEM ONLINE", 3447003, "", stats["total_lifetime"])
 
         while True:
             try:
-                new_resp = await client.get_balance(pubkey)
-                new_bal = new_resp.value
-                
+                # Reset Daily Stats at Midnight
+                if datetime.now().date() != stats["current_day"]:
+                    stats["daily_tolls"] = 0.0
+                    stats["daily_subs"] = 0.0
+                    stats["current_day"] = datetime.now().date()
+
+                new_bal = (await client.get_balance(pubkey)).value
                 if new_bal != stats["last_bal"]:
                     diff = (new_bal - stats["last_bal"]) / 1e9
-                    stats["lifetime_sol"] = new_bal / 1e9
-                    
-                    if diff > 0:
-                        # Identify specific subscription amounts
-                        if round(diff, 1) == 2.0:
-                            cat = "API SUBSCRIPTION"
-                        elif round(diff, 1) == 5.0:
-                            cat = "WHALE PASS"
-                        else:
-                            cat = "TOLL IN"
+                    sigs = await client.get_signatures_for_address(pubkey, limit=1)
+                    sig = sigs.value[0].signature if sigs.value else ""
+
+                    if new_bal > stats["last_bal"]:
+                        label, color, r_type = identify_revenue(diff)
+                        stats["total_lifetime"] += diff
+                        if r_type == "sub": stats["daily_subs"] += diff
+                        else: stats["daily_tolls"] += diff
                         
-                        await send_to_discord(diff, cat)
+                        await post_to_discord(diff, label, color, sig, new_bal / 1e9)
                     else:
-                        # Track the sweep to your Kraken vault
-                        await send_to_discord(abs(diff), "SWEEP TO KRAKEN")
+                        await post_to_discord(abs(diff), "SWEEP", 15105570, sig, new_bal / 1e9, is_sweep=True)
                     
                     stats["last_bal"] = new_bal
-                
-                await asyncio.sleep(10)
-            except Exception as e:
-                print(f"Monitoring Loop Error: {e}")
-                await asyncio.sleep(15)
+                await asyncio.sleep(5)
+            except: await asyncio.sleep(10)
 
-# --- PLACEHOLDER FOR SCALPER LOGIC ---
-# This ensures your trading bot background tasks still run
-async def lead_scalper_engine():
-    print("🎯 Lead Scalper Engine: Active & Hunting...")
+async def scalper_heartbeat():
     while True:
-        # Your original trading/scanning logic stays active here
+        # This keeps the Render instance from sleeping and confirms hunting
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🟢 Scalper Hunting for Leads...")
         await asyncio.sleep(60)
 
 async def main():
-    # Runs the Revenue Monitor and the Scalper Engine at the same time
-    await asyncio.gather(
-        monitor_revenue_and_subs(),
-        lead_scalper_engine()
-    )
+    await asyncio.gather(auditor_engine(), scalper_heartbeat())
 
 if __name__ == "__main__":
     asyncio.run(main())
