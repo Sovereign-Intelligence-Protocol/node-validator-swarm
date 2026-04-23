@@ -1,5 +1,6 @@
-solana==0.35.0         # Base RPC client
-solders==0.23.0        # High-performance Rust-based core
-jito-py==0.1.3         # For bundle submissions
-httpx==0.27.0          # For async Discord/Helius requests
-python-dotenv==1.0.1   # To read your Render variables
+solana==0.35.0
+solders==0.23.0
+jito-py==0.1.3
+httpx==0.27.0
+python-dotenv==1.0.1
+base58==2.1.1
