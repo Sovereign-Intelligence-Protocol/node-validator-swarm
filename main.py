@@ -16,7 +16,8 @@ load_dotenv()
 
 # --- THE PLUG-AND-PLAY SETUP ---
 MY_API_KEY = "AIzaSyCjVh_3Zi_90ljhgXsNNO_V9relgNrpICo"
-client = genai.Client(api_key=MY_API_KEY)
+# Use .aio for the asynchronous client
+client = genai.Client(api_key=MY_API_KEY).aio
 
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("RPC_URL")
@@ -39,9 +40,14 @@ except Exception as e:
 async def analyze_sentiment(query):
     try:
         prompt = f"Analyze '{query}' for crypto sentiment and rug risk."
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        # Use 'await' with the async client models
+        response = await client.models.generate_content(
+            model="gemini-2.0-flash", 
+            contents=prompt
+        )
         return response.text
     except Exception as e:
+        print(f"AI Error: {e}")
         return "neutral"
 
 async def main():
@@ -49,8 +55,11 @@ async def main():
     while True:
         try:
             print("[SCANNING] Checking liquidity pairs...")
+            # Example of how you'd call the AI during a scan:
+            # result = await analyze_sentiment("Sample Token Name")
             await asyncio.sleep(5) 
         except Exception as e:
+            print(f"Loop Error: {e}")
             await asyncio.sleep(2)
 
 if __name__ == "__main__":
