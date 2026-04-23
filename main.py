@@ -17,12 +17,11 @@ from solders.keypair import Keypair as SoldersKeypair
 load_dotenv()
 
 # --- THE PLUG-AND-PLAY SETUP ---
-# Your API Key is now hard-coded here for simplicity
 MY_API_KEY = "AIzaSyCjVh_3Zi_90ljhgXsNNO_V9relgNrpICo"
 client = genai.Client(api_key=MY_API_KEY)
 
 # Pulling Solana/Helius keys from Render Environment Variables
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY") or os.getenv("I_KEY")
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 SOLANA_RPC_URL_BASE = os.getenv("SOLANA_RPC_URL_BASE") or os.getenv("HELIUS_RPC_URL") or os.getenv("RPC_URL")
 JITO_SIGNER_PRIVATE_KEY = os.getenv("JITO_SIGNER_PRIVATE_KEY")
 HELIUS_RPC_URL = f"{SOLANA_RPC_URL_BASE}/?api-key={HELIUS_API_KEY}"
@@ -34,7 +33,7 @@ try:
         jito_signer = SoldersKeypair.from_bytes(bytes(json.loads(raw_key)))
     else:
         key_bytes = base58.b58decode(raw_key)
-        jito_signer = SoldersKeypair.from_bytes(key_bytes) if len(key_bytes) != 32 else SoldersKeypair.from_seed(key_bytes)
+        jito_signer = SoldersKeypair.from_bytes(key_bytes)
     print(f"[SIGNER] Active: {jito_signer.pubkey()}")
 except Exception as e:
     print(f"CRITICAL: Signer initialization failed: {e}")
@@ -51,6 +50,4 @@ async def call_rpc(method, params):
 
 async def analyze_sentiment(query):
     try:
-        prompt = f"Analyze '{query}' for crypto sentiment and rug risk. Format: Sentiment: [positive/neutral/negative], Confidence: [1-100], Risk: [0-100%]"
-        # Using the new SDK syntax for Gemini 2.0 Flash
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=
+        prompt = f"Analyze '{query}' for crypto
