@@ -1,79 +1,66 @@
-# Aggressive Sniper Swarm - Omega "Money" Edition
-import os
-import asyncio
-import json
-import base58
-import httpx
+import os, asyncio, json, httpx, base58
 from dotenv import load_dotenv
-
-# Modern SDK Imports
-from google import genai
 from solders.keypair import Keypair as SoldersKeypair
 
 load_dotenv()
 
-# --- CORE SETTINGS ---
-MY_API_KEY = os.getenv("GOOGLE_API_KEY") or "AIzaSyCjVh_3Zi_90ljhgXsNNO_V9relgNrpICo"
-client = genai.Client(api_key=MY_API_KEY).aio
-
-# --- RENDER ENVIRONMENT SYNC ---
-DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
+# --- CONFIG ---
 KRAKEN_DEST = os.getenv("KRAKEN_DESTINATION") 
+DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
+# Using a reliable public RPC for balance checks
+RPC_URL = "https://api.mainnet-beta.solana.com"
 
-# --- SIGNER SETUP (FIXED FOR HEX) ---
-try:
-    raw_key = os.getenv("SOLANA_PRIVATE_KEY").strip().strip("'").strip('"')
+async def get_sol_balance(addr):
+    try:
+        async with httpx.AsyncClient() as client:
+            payload = {"jsonrpc": "2.0", "id": 1, "method": "getBalance", "params": [addr]}
+            r = await client.post(RPC_URL, json=payload, timeout=10.0)
+            return r.json()['result']['value'] / 1e9
+    except Exception as e:
+        print(f"Balance Check Error: {e}")
+        return 0.0
+
+async def force_discord_report():
+    if not DISCORD_WEBHOOK or not KRAKEN_DEST:
+        print("MISSING CONFIG: Check DISCORD_WEBHOOK_URL and KRAKEN_DESTINATION in Render.")
+        return
     
-    # Check if it's Hex (your screenshots show A-F, 0-9)
-    if all(c in "0123456789abcdefABCDEF" for c in raw_key):
-        jito_signer = SoldersKeypair.from_bytes(bytes.fromhex(raw_key))
-    # Handle Byte Array [1, 2, 3...]
-    elif raw_key.startswith("["):
-        jito_signer = SoldersKeypair.from_bytes(bytes(json.loads(raw_key)))
-    # Default to Base58
-    else:
-        jito_signer = SoldersKeypair.from_bytes(base58.b58decode(raw_key))
-        
-    print(f"[SIGNER] Active: {jito_signer.pubkey()}")
-except Exception as e:
-    print(f"CRITICAL: Signer initialization failed: {e}")
-    exit(1)
-
-# --- THE PERFECTED VISUAL REPORTER ---
-async def post_advanced_signal(signal_type, data):
-    if not DISCORD_WEBHOOK: return
-    payload = {"username": "Spidey Bot", "embeds": []}
-    if signal_type == "ATOMIC_FEE":
-        payload["embeds"].append({
-            "title": "🔥 STRIKE EVIDENCE: ATOMIC FEE SETTLED",
-            "color": 15105570,
+    current_val = await get_sol_balance(KRAKEN_DEST)
+    
+    # This payload is designed to be UNSTOPPABLE. 
+    # It sends both a raw text 'content' AND a fancy 'embed'.
+    payload = {
+        "content": f"📈 **TREASURY UPDATE:** {current_val:.4f} SOL currently in Kraken Vault.",
+        "embeds": [{
+            "title": "💰 REVENUE FLOW: ACTIVE",
+            "color": 3066993, # Financial Green
             "fields": [
-                {"name": "Value", "value": f"`+{data.get('amount', '0.00')} SOL`", "inline": True},
-                {"name": "Target", "value": "Kraken Vault", "inline": True}
+                {"name": "Vault Balance", "value": f"`{current_val:.4f} SOL`", "inline": True},
+                {"name": "Wallet", "value": f"`{KRAKEN_DEST[:4]}...{KRAKEN_DEST[-4:]}`", "inline": True},
+                {"name": "Bridge Status", "value": "✅ COLLECTING", "inline": False}
             ],
-            "description": f"**Revenue Proof:** [Solscan Link](https://solscan.io/tx/{data.get('tx', '')})"
-        })
-    else:
-        payload["content"] = f"🚀 **{data.get('msg', 'System Online')}**"
+            "footer": {"text": "Sovereign Intelligence Protocol | Revenue Monitor"}
+        }]
+    }
 
-    async with httpx.AsyncClient() as session:
+    async with httpx.AsyncClient() as client:
         try:
-            await session.post(DISCORD_WEBHOOK, json=payload, timeout=10.0)
+            resp = await client.post(DISCORD_WEBHOOK, json=payload, timeout=10.0)
+            print(f"Discord Response: {resp.status_code}")
         except Exception as e:
-            print(f"[DISCORD] Error: {e}")
+            print(f"Discord POST Error: {e}")
 
 async def main():
-    print("2026-04-23 [INFO] [BOOT] HARD-CONNECT Elite Edition ACTIVE")
-    await post_advanced_signal("SYSTEM", {"msg": "Predator Node Online. Toll Bridge Gate: OPEN."})
-
+    print("--- 2026 OMEGA REVENUE MONITOR STARTING ---")
+    
+    # 1. Immediate Report on Boot
+    await force_discord_report()
+    
+    # 2. Continuous Loop
     while True:
-        try:
-            vault_display = f"{KRAKEN_DEST[:4]}...{KRAKEN_DEST[-4:]}" if KRAKEN_DEST else "NOT_SET"
-            print(f"[SCANNING] Monitoring Bridge. Vault: {vault_display}")
-            await asyncio.sleep(60)
-        except Exception as e:
-            print(f"Loop Error: {e}")
-            await asyncio.sleep(5)
+        # Pings Discord every 15 minutes with the latest balance
+        await asyncio.sleep(900) 
+        await force_discord_report()
 
 if __name__ == "__main__":
     asyncio.run(main())
