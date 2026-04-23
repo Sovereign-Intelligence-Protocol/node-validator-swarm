@@ -1,132 +1,86 @@
 import os
 import asyncio
 import httpx
-import sqlite3
-import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from solders.pubkey import Pubkey
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Processed
 
-# Load variables from Render Dashboard
 load_dotenv()
 
-# --- CONFIGURATION ---
-RPC_URL = (
-    os.getenv("HELIUS_RPC_URL") or 
-    os.getenv("SOLANA_RPC_URL") or 
-    "https://api.mainnet-beta.solana.com"
-)
-JITO_ENGINE = os.getenv("JITO_BLOCK_ENGINE_URL")
-SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS") 
-DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL")
-# Use current working directory explicitly for Render
-DB_PATH = os.path.join(os.getcwd(), "protocol_vault.db") 
+# --- CONFIG ---
+# These pull from your Render Environment Variables
+RPC_URL = os.getenv("HELIUS_RPC_URL") or "https://api.mainnet-beta.solana.com"
+SEED_WALLET = os.getenv("HOT_WALLET_ADDRESS")
+TG_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def init_db():
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
-        c = conn.cursor()
-        c.execute('CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY, value REAL)')
-        c.execute('CREATE TABLE IF NOT EXISTS processed_sigs (sig TEXT PRIMARY KEY)')
-        for key in ['total_lifetime', 'daily_tolls', 'daily_subs']:
-            c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES (?, 0.0)", (key,))
-        conn.commit()
-        conn.close()
-        print("✅ Audit 1: Database persistence confirmed.")
-    except Exception as e:
-        print(f"❌ DB Error: {e}")
-        sys.exit(1) # Exit with error so Render logs it
-
-async def get_stats_and_price():
-    data = {'total_lifetime': 0.0, 'daily_tolls': 0.0, 'daily_subs': 0.0}
-    price = 145.0 
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=15)
-        c = conn.cursor()
-        c.execute("SELECT key, value FROM stats")
-        rows = dict(c.fetchall())
-        if rows: data.update(rows)
-        conn.close()
-        
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            r = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT")
-            if r.status_code == 200:
-                price = float(r.json()['price'])
-    except Exception:
-        pass # Silence price errors to keep heartbeat alive
-    return data, price
-
-async def send_heartbeat(status_msg, current_bal):
-    data, price = await get_stats_and_price()
-    is_helius = "helius" in RPC_URL.lower()
-    bridge_label = "Helius + Jito ⚡" if is_helius and JITO_ENGINE else "Public Bridge 🐌"
-    
+async def send_tg_msg(text):
+    """Sends a direct signal to the Sovereign Command Center on Telegram."""
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     payload = {
-        "embeds": [{
-            "title": "⚡ SOVEREIGN PROTOCOL: ACTIVE",
-            "color": 3066993,
-            "fields": [
-                {"name": "Seed Wallet (Kraken)", "value": f"`{current_bal:.4f} SOL`", "inline": True},
-                {"name": "Network Bridge", "value": f"**{bridge_label}**", "inline": True},
-                {"name": "Total Wealth", "value": f"`{data.get('total_lifetime', 0):.4f} SOL`", "inline": False},
-                {"name": "System Status", "value": f"🟢 {status_msg}", "inline": True}
-            ],
-            "footer": {"text": f"Audit Cycle Live | {datetime.now().strftime('%H:%M:%S')} UTC"}
-        }]
+        "chat_id": TG_CHAT_ID, 
+        "text": text, 
+        "parse_mode": "Markdown"
     }
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            await client.post(DISCORD_WEBHOOK, json=payload)
-        except Exception:
-            print("⚠️ Audit 2: Discord Webhook timed out - retrying next cycle.")
+            resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                print(f"❌ Telegram API Error: {resp.text}")
+        except Exception as e:
+            print(f"❌ Connection Error: {e}")
 
 async def auditor():
-    init_db()
-    if not SEED_WALLET or not DISCORD_WEBHOOK:
-        print("❌ CRITICAL: Missing Environment Variables!")
-        sys.exit(1)
+    # Safety check for environment variables
+    if not all([SEED_WALLET, TG_TOKEN, TG_CHAT_ID]):
+        print("❌ ERROR: Missing TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, or HOT_WALLET_ADDRESS in Render!")
+        return
 
-    print(f"🚀 ENGINE START: Monitoring {SEED_WALLET}")
+    print(f"🚀 AUDIT START: Monitoring {SEED_WALLET[:6]}...")
     
+    # Startup Notification
+    await send_tg_msg(
+        f"⚡ *SOVEREIGN PROTOCOL: ONLINE*\n\n"
+        f"🏦 *Destination:* Kraken Account\n"
+        f"🛰️ *Status:* Monitoring Live\n"
+        f"⏰ *Time:* `{datetime.now().strftime('%H:%M:%S')} UTC`"
+    )
+
     async with AsyncClient(RPC_URL, commitment=Processed) as client:
         try:
             pk = Pubkey.from_string(SEED_WALLET)
             res = await client.get_balance(pk)
             last_bal = res.value
-            await send_heartbeat("ENGINE INITIALIZED", last_bal / 1e9)
         except Exception as e:
-            print(f"⚠️ Initial connection failed: {e}")
+            print(f"❌ Solana Connection Failed: {e}")
             last_bal = 0
 
         while True:
             try:
-                sig_resp = await client.get_signatures_for_address(pk, limit=5)
-                if sig_resp and sig_resp.value:
-                    for tx in reversed(sig_resp.value):
-                        s_str = str(tx.signature)
-                        conn = sqlite3.connect(DB_PATH, timeout=20)
-                        c = conn.cursor()
-                        if not c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (s_str,)).fetchone():
-                            await asyncio.sleep(2)
-                            new_res = await client.get_balance(pk)
-                            new_bal = new_res.value
-                            if new_bal > last_bal:
-                                diff = (new_bal - last_bal) / 1e9
-                                c.execute("INSERT INTO processed_sigs VALUES (?)", (s_str,))
-                                c.execute("UPDATE stats SET value = value + ? WHERE key = 'total_lifetime'", (diff,))
-                                conn.commit()
-                                await send_heartbeat("REVENUE DETECTED 💰", new_bal / 1e9)
-                            last_bal = new_bal
-                        conn.close()
-                await asyncio.sleep(20) # Conservative timing to stay under RPC limits
+                await asyncio.sleep(30) # Efficient check every 30 seconds
+                new_res = await client.get_balance(pk)
+                
+                if new_res.value != last_bal:
+                    diff = (new_res.value - last_bal) / 1e9
+                    label = "💰 REVENUE" if diff > 0 else "💸 OUTFLOW"
+                    
+                    msg = (
+                        f"*{label} DETECTED*\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"🔹 *Change:* `{diff:.4f} SOL`\n"
+                        f"🏦 *Kraken Total:* `{new_res.value/1e9:.4f} SOL`"
+                    )
+                    await send_tg_msg(msg)
+                    last_bal = new_res.value
+                    
             except Exception as e:
-                print(f"⚠️ RPC Loop: {e}")
-                await asyncio.sleep(30)
+                print(f"⚠️ Loop Warning: {e}")
+                await asyncio.sleep(60)
 
 if __name__ == "__main__":
     try:
         asyncio.run(auditor())
-    except KeyboardInterrupt:
-        print("🛑 System manual shutdown.")
+    except Exception as e:
+        print(f"❌ Fatal Crash: {e}")
