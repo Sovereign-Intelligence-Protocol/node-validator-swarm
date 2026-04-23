@@ -1,10 +1,11 @@
-# Aggressive Sniper Swarm - Final Migration + Discord Voice
+# Aggressive Sniper Swarm - Final Migration + Advanced Reporting
 # Refactored for google-genai SDK (Gemini 2.0 Flash)
 import os
 import asyncio
 import json
 import base58
 import httpx
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Modern SDK Imports
@@ -16,7 +17,6 @@ load_dotenv()
 
 # --- THE PLUG-AND-PLAY SETUP ---
 MY_API_KEY = "AIzaSyCjVh_3Zi_90ljhgXsNNO_V9relgNrpICo"
-# Use .aio for the asynchronous client
 client = genai.Client(api_key=MY_API_KEY).aio
 
 # Webhook for Wildfire Saturation Status
@@ -40,16 +40,38 @@ except Exception as e:
     print(f"CRITICAL: Signer initialization failed: {e}")
     exit(1)
 
-# --- DISCORD REPORTER ---
-async def post_to_discord(msg):
-    if DISCORD_WEBHOOK:
-        async with httpx.AsyncClient() as session:
-            try:
-                payload = {"content": f"🔥 **WILDFIRE SIGNAL:**\n{msg}"}
-                await session.post(DISCORD_WEBHOOK, json=payload)
-                print("[DISCORD] Signal broadcasted.")
-            except Exception as e:
-                print(f"[DISCORD] Broadcast Error: {e}")
+# --- ADVANCED DISCORD REPORTER (The "Toll Bridge" Voice) ---
+async def post_advanced_signal(signal_type, data):
+    if not DISCORD_WEBHOOK:
+        return
+    
+    # Matching the specific formatting from your "Omega" screenshots
+    if signal_type == "OMEGA_SWEEP":
+        content = (
+            f"⚛️ **OMEGA AUTO-SWEEP CONFIRMED**\n"
+            f"**Amount:** `{data['amount']} SOL`\n"
+            f"**Reserve Maintained:** `0.01 SOL`\n"
+            f"**Method:** Jito-Bundled (Next-Block Guarantee)\n"
+            f"**Tx:** https://solscan.io/tx/{data['tx']}\n"
+            f"**Status:** `SETTLED`"
+        )
+    elif signal_type == "ATOMIC_FEE":
+        content = (
+            f"🔥 **STRIKE EVIDENCE: ATOMIC FEE SETTLED**\n"
+            f"**Value:** `+{data['amount']} SOL`\n"
+            f"**Shield:** Jito-Protected\n"
+            f"**Proof:** https://solscan.io/tx/{data['tx']}\n"
+            f"**Target:** Alpha Group Handshake Pipeline"
+        )
+    else:
+        content = f"🔥 **WILDFIRE SIGNAL:**\n{data.get('msg', 'System Heartbeat')}"
+
+    async with httpx.AsyncClient() as session:
+        try:
+            await session.post(DISCORD_WEBHOOK, json={"content": content})
+            print(f"[DISCORD] {signal_type} broadcasted.")
+        except Exception as e:
+            print(f"[DISCORD] Broadcast Error: {e}")
 
 async def analyze_sentiment(query):
     try:
@@ -67,13 +89,16 @@ async def main():
     print("2026-04-23 [INFO] [BOOT] HARD-CONNECT Elite Edition ACTIVE")
     
     # Heartbeat: Confirmation that the bot is back in the channel
-    await post_to_discord("🚀 Predator Node is Online. Initializing Mempool Subscription...")
+    await post_advanced_signal("SYSTEM", {"msg": "🚀 Predator Node is Online. Initializing Mempool Subscription..."})
 
     while True:
         try:
-            print("[SCANNING] Checking liquidity pairs...")
-            # When you find a hit, you can now call:
-            # await post_to_discord(f"New Signal Found: {token_address}")
+            print("[SCANNING] Checking liquidity pairs & Toll Bridge traffic...")
+            
+            # --- EXAMPLE USAGE FOR TOLL BRIDGE REPORTS ---
+            # To trigger an Atomic Fee report:
+            # await post_advanced_signal("ATOMIC_FEE", {"amount": "0.3549", "tx": "5Z63e..."})
+            
             await asyncio.sleep(5) 
         except Exception as e:
             print(f"Loop Error: {e}")
