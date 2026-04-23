@@ -8,7 +8,7 @@ from solders.pubkey import Pubkey
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Processed
 
-# Load all Render Environment Variables
+# Load variables from Render Dashboard
 load_dotenv()
 
 # --- CONFIGURATION ---
@@ -37,12 +37,15 @@ def init_db():
 
 async def get_stats_and_price():
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
-        c.execute("SELECT key, value FROM stats"); data = dict(c.fetchall()); conn.close()
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        c = conn.cursor()
+        c.execute("SELECT key, value FROM stats")
+        data = dict(c.fetchall())
+        conn.close()
         async with httpx.AsyncClient() as client:
             r = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT", timeout=5)
             price = float(r.json()['price'])
-    except:
+    except Exception:
         data = {'total_lifetime': 0.0, 'daily_tolls': 0.0, 'daily_subs': 0.0}
         price = 145.0
     return data, price
@@ -66,8 +69,10 @@ async def send_heartbeat(status_msg, current_bal):
         }]
     }
     async with httpx.AsyncClient() as client:
-        try: await client.post(DISCORD_WEBHOOK, json=payload, timeout=5)
-        except: print("⚠️ Discord Webhook unreachable")
+        try:
+            await client.post(DISCORD_WEBHOOK, json=payload, timeout=5)
+        except Exception:
+            pass
 
 async def auditor():
     init_db()
@@ -83,8 +88,7 @@ async def auditor():
             current_bal_sol = res.value / 1e9
             await send_heartbeat("ENGINE ACTIVE", current_bal_sol)
             last_bal = res.value
-        except Exception as e:
-            print(f"⚠️ RPC Lag on startup: {e}")
+        except Exception:
             last_bal = 0
 
         while True:
@@ -93,7 +97,8 @@ async def auditor():
                 if sig_resp and sig_resp.value:
                     for tx in reversed(sig_resp.value):
                         s_str = str(tx.signature)
-                        conn = sqlite3.connect(DB_PATH, timeout=10); c = conn.cursor()
+                        conn = sqlite3.connect(DB_PATH, timeout=10)
+                        c = conn.cursor()
                         if not c.execute("SELECT 1 FROM processed_sigs WHERE sig=?", (s_str,)).fetchone():
                             await asyncio.sleep(2)
                             new_res = await client.get_balance(pk)
@@ -107,7 +112,6 @@ async def auditor():
                         conn.close()
                 await asyncio.sleep(5)
             except Exception as e:
-                # This 10s wait is what prevents the Discord from going silent
                 print(f"⚠️ RPC Exception, retrying in 10s: {e}")
                 await asyncio.sleep(10)
 
