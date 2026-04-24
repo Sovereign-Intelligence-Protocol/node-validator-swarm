@@ -1,97 +1,88 @@
-import os
-import time
-import redis
-import telebot
-import threading
+import os, time, redis, telebot, threading, requests
 from flask import Flask, request, jsonify
 from solana.rpc.api import Client
 from solders.pubkey import Pubkey
 
-# --- INITIALIZATION ---
+# --- CORE SETTINGS (The Only Part You Ever Edit) ---
+CONFIG = {
+    "TOLL_BASIC": 0.1,
+    "TOLL_WHALE": 0.5,
+    "SWEEP_THRESHOLD": 1.5,
+    "REVENUE_CH": os.getenv("REVENUE_CHANNEL_ID"),
+    "ADMIN": os.getenv("ADMIN_ID"),
+    "HOT_WALLET": os.getenv("SOLANA_WALLET_ADDRESS")
+}
+
 bot = telebot.TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"))
-sol_client = Client(os.getenv("RPC_URL"))
 r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 app = Flask(__name__)
 
-# --- CONFIG ---
-ADMIN_ID = os.getenv("ADMIN_ID")
-HOT_WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
-KRAKEN_ADDR = os.getenv("KRAKEN_ADDRESS")
-REVENUE_CH_ID = os.getenv("REVENUE_CHANNEL_ID")
+# --- 1. INTELLIGENCE & TELEMETRY ENGINE ---
+class Ledger:
+    @staticmethod
+    def log_event(uid, event, meta=None):
+        """Total Protocol Audit: Tracks Conversion, Churn, and Usage."""
+        entry = {"uid": str(uid), "event": event, "ts": time.time(), "meta": str(meta)}
+        r.xadd("protocol_logs", entry, maxlen=10000)
+        r.hset(f"u:{uid}", "last_act", time.time())
+        if event == "PAYMENT":
+            r.incrbyfloat("total_rev", meta.get("amt", 0))
 
-# --- 1. THE AUTO-UNLOCK (HELIUS WEBHOOK HANDLER) ---
+# --- 2. AUTOMATED REVENUE & GATEKEEPER ---
 @app.route('/helius-webhook', methods=['POST'])
-def helius_webhook():
-    """Listens for 0.1 SOL transfers and unlocks users instantly."""
+def gatekeeper():
     data = request.json
-    try:
-        for tx in data:
-            if tx.get('type') == 'TRANSFER':
-                for transfer in tx.get('nativeTransfers', []):
-                    # Check if payment hit our wallet and is >= 0.1 SOL
-                    if transfer['toUserAccount'] == HOT_WALLET and transfer['amount'] >= 100000000:
-                        # Extract Telegram ID from the Memo field
-                        memo = tx.get('instructions', [{}])[0].get('parsed', {}).get('info', {}).get('memo', "")
-                        if memo.isdigit():
-                            r.set(f"access:{memo}", "active", ex=2592000) # 30 Day Access
-                            bot.send_message(memo, "✅ **TOLL VERIFIED**\nYour 30-day access is now active. /scrape to begin.")
-                            print(f"🔓 Autonomous unlock: User {memo}")
-    except Exception as e:
-        print(f"Webhook Error: {e}")
-    return jsonify({"status": "received"}), 200
+    for tx in data:
+        if tx.get('type') == 'TRANSFER':
+            for tr in tx.get('nativeTransfers', []):
+                if tr['toUserAccount'] == CONFIG["HOT_WALLET"]:
+                    uid = tx.get('instructions', [{}])[0].get('parsed', {}).get('info', {}).get('memo')
+                    amt = tr['amount'] / 10**9
+                    if uid and uid.isdigit():
+                        tier = "WHALE" if amt >= CONFIG["TOLL_WHALE"] else "BASIC"
+                        r.set(f"access:{uid}", tier, ex=2592000) # 30 Days
+                        Ledger.log_event(uid, "PAYMENT", {"amt": amt, "tier": tier})
+                        bot.send_message(uid, f"✅ **{tier} ACCESS GRANTED**\nHunting license active.")
+    return jsonify({"status": "ok"}), 200
 
-# --- 2. THE REVENUE SENTRY (AUTOMATED KRAKEN BRIDGE) ---
-def revenue_sentry():
-    """Background thread: Keeps hot wallet lean, bridges to Kraken."""
-    while True:
-        try:
-            bal = sol_client.get_balance(Pubkey.from_string(HOT_WALLET)).value / 10**9
-            if bal > 1.5:
-                # Automated Sweep logic here (keep 0.1 for gas)
-                print(f"💰 Threshold hit ({bal} SOL). Routing to Kraken...")
-        except Exception as e:
-            print(f"Sentry Error: {e}")
-        time.sleep(1800)
-
-# --- 3. THE GATEKEEPER ---
-def gatekeeper(func):
-    def wrapper(message):
-        uid = str(message.from_user.id)
-        if uid == ADMIN_ID or r.get(f"access:{uid}") == "active":
-            return func(message)
-        
-        # Pay Button with Deep Link (Includes Memo for Auto-Unlock)
-        markup = telebot.types.InlineKeyboardMarkup()
-        pay_url = f"https://solana.com/pay/{HOT_WALLET}?amount=0.1&memo={uid}"
-        markup.add(telebot.types.InlineKeyboardButton("💳 Pay 0.1 SOL Toll", url=pay_url))
-        bot.reply_to(message, "🚫 **ACCESS RESTRICTED**\n\nPay the toll to unlock the Hunter.", reply_markup=markup)
-    return wrapper
-
-# --- 4. COMMANDS ---
-@bot.message_handler(commands=['health'])
-def health(message):
-    bal = sol_client.get_balance(Pubkey.from_string(HOT_WALLET)).value / 10**9
-    audit = (f"🛡️ **S.I.P. LEVIATHAN AUDIT**\n━━━━━━━━━━━━━━━\n"
-             f"🔑 Signer: ✅ ARMED\n🛰️ Webhook: ✅ LISTENING\n"
-             f"💰 Wallet: `{bal:.4f} SOL`\n🏢 Bridge: Kraken Locked\n"
-             f"━━━━━━━━━━━━━━━\nSystem State: **AUTONOMOUS**")
-    bot.reply_to(message, audit, parse_mode="Markdown")
+# --- 3. THE MASTER COMMANDS ---
+@bot.message_handler(commands=['stats'])
+def show_god_view(message):
+    if str(message.from_user.id) != CONFIG["ADMIN"]: return
+    rev = r.get("total_rev") or 0
+    subs = len(r.keys("access:*"))
+    logs = r.xrevrange("protocol_logs", count=5)
+    
+    msg = (f"👑 **OMNI-SOVEREIGN DASHBOARD**\n"
+           f"💰 Lifetime Rev: `{rev} SOL`\n"
+           f"👥 Active Subs: `{subs}`\n\n"
+           f"🛰️ **Real-Time Audit:**\n")
+    for _, l in logs:
+        msg += f"• {l['uid']} | {l['event']} | {l['meta']}\n"
+    bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['scrape'])
-@gatekeeper
-def hunt(message):
-    bot.reply_to(message, "📡 **SCANNING MAINNET...**")
-    # Lead finding + Marketing broadcast logic...
+def hunter(message):
+    uid = str(message.from_user.id)
+    access = r.get(f"access:{uid}")
+    if uid != CONFIG["ADMIN"] and not access:
+        # Auto-generate Payment Link
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton("💳 Pay 0.1 SOL", url=f"https://solana.com/pay/{CONFIG['HOT_WALLET']}?amount=0.1&memo={uid}"))
+        return bot.reply_to(message, "🚫 **ACCESS DENIED**\nPay toll to unlock sniper.", reply_markup=markup)
+    
+    Ledger.log_event(uid, "SCRAPE_START", {"tier": access or "ADMIN"})
+    bot.reply_to(message, f"📡 **SCANNING... (Tier: {access or 'ADMIN'})**")
 
-# --- STARTUP ---
-def run_flask():
-    app.run(host='0.0.0.0', port=os.getenv("PORT", 10000))
-
+# --- 4. STARTUP PROTOCOL ---
 if __name__ == "__main__":
-    print("S.I.P. v10.0 Leviathan Launching...")
-    # Thread 1: Flask (Webhooks)
-    threading.Thread(target=run_flask, daemon=True).start()
-    # Thread 2: Sentry (Revenue Monitoring)
-    threading.Thread(target=revenue_sentry, daemon=True).start()
-    # Main Thread: Telegram Bot
+    # Self-Updating Commands UI
+    bot.set_my_commands([
+        telebot.types.BotCommand("health", "🛡️ Security Audit"),
+        telebot.types.BotCommand("scrape", "📡 Start Lead Hunt"),
+        telebot.types.BotCommand("stats", "📊 Master Stats"),
+        telebot.types.BotCommand("balance", "💰 Wallet Balance")
+    ])
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=10000), daemon=True).start()
+    print("S.I.P. v12.0 'Omni-Sovereign' is Online.")
     bot.infinity_polling()
