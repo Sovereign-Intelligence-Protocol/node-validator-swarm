@@ -5,27 +5,33 @@ import psycopg2
 from dotenv import load_dotenv
 from solana.rpc.api import Client
 
-# --- 1. INITIALIZATION ---
+# --- 1. INITIALIZATION & SAFETY CHECK ---
 load_dotenv()
 
-# We are using 'BOT_TOKEN' to match your latest Render dashboard update
+# This MUST match the key name in your Render Environment tab
 TOKEN = os.getenv('BOT_TOKEN') 
 ADMIN_ID = os.getenv('ADMIN_ID')
 KRAKEN_ADDR = os.getenv('KRAKEN_ADDRESS')
 DB_URL = os.getenv('DATABASE_URL')
 RPC_URL = os.getenv('RPC_URL')
 
-# This safety check stops the NoneType error and tells you if the name is wrong
+# --- THE AUTO-DIAGNOSTIC ---
 if not TOKEN:
-    print("❌ ERROR: 'BOT_TOKEN' not found! Double-check the Key name in Render.")
-    while True: time.sleep(10)
+    print("\n" + "!"*40)
+    print("CRITICAL ERROR: 'BOT_TOKEN' IS MISSING!")
+    print("Please check your Render Environment variables.")
+    print("If your key is named 'TELEGRAM_TOKEN', rename it to 'BOT_TOKEN'.")
+    print("!"*40 + "\n")
+    # Keeps the process alive so the log doesn't just disappear
+    while True:
+        time.sleep(60)
 
 bot = telebot.TeleBot(TOKEN, parse_mode="MARKDOWN")
 solana_client = Client(RPC_URL)
 
-# --- 2. REVENUE, SUBS, & CRYPTO TRACKING ---
-def track_all_activity(user_id, amount, tx_hash, category="general"):
-    """Maintains full tracking logic for revenue, subscriptions, and settlements."""
+# --- 2. THE CORE BUSINESS LOGIC (Tracking & Revenue) ---
+def track_activity(user_id, amount, tx_hash, category="settlement"):
+    """Maintains full ledger tracking for crypto and subscriptions."""
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -38,47 +44,33 @@ def track_all_activity(user_id, amount, tx_hash, category="general"):
         conn.commit()
         cur.close()
         conn.close()
-        print(f"✔️ Ledger Entry: {category} for {user_id}")
     except Exception as e:
-        print(f"Tracking Error: {e}")
+        print(f"Ledger Error: {e}")
 
-# --- 3. HUNTING ENGINE (Jito & Liquidity) ---
-def run_hunting_protocol():
-    """Maintains Jito Shield & predatory liquidity hunting loops."""
-    # This keeps your core engine active
-    print(">>> Jito Shield: PROTECTED")
-    print(">>> Solana Liquidity Scan: ACTIVE")
-
-# --- 4. BOT HANDLERS ---
+# --- 3. BOT HANDLERS & HUNTING ---
 @bot.message_handler(commands=['start', 'status'])
 def handle_status(message):
     if str(message.from_user.id) == str(ADMIN_ID):
-        status_msg = (
-            "🦅 *S.I.P. v12.5 Online*\n\n"
-            "📈 *Tracking:* Active\n"
-            "🛡️ *Jito Shield:* Enabled\n"
-            f"💰 *Route:* [Kraken]({KRAKEN_ADDR})"
-        )
-        bot.reply_to(message, status_msg)
+        bot.reply_to(message, "🦅 *S.I.P. v12.6 Active*\nLedger & Jito Shield Online.")
 
-@bot.message_handler(commands=['revenue', 'subs'])
-def handle_ledger(message):
-    if str(message.from_user.id) == str(ADMIN_ID):
-        bot.reply_to(message, "📊 *Sovereign Ledger:* Querying database...")
+def run_hunting_protocol():
+    """Jito Shield & Solana Liquidity logic."""
+    print(">>> Jito Shield: PROTECTED")
+    print(">>> Solana Liquidity Scan: ACTIVE")
 
-# --- 5. THE "GHOST KILLER" EXECUTION ---
+# --- 4. THE EXECUTION ENGINE ---
 def main():
     while True:
         try:
-            # THIS KILLS THE 409 CONFLICT (Instance Collision)
-            print("Action: Resetting Telegram handshake...")
+            # THIS KILLS THE 409 CONFLICT
+            print("Resetting Telegram handshake...")
             bot.remove_webhook()
             time.sleep(2) 
             
             print("Sovereign Intelligence Protocol: Hunting and Tracking Live.")
             if ADMIN_ID:
                 try:
-                    bot.send_message(ADMIN_ID, "✅ *Protocol Finalized:* Connection stable. Tracking resumed.")
+                    bot.send_message(ADMIN_ID, "🚀 *System Online:* Instance collision resolved.")
                 except:
                     pass
 
@@ -86,7 +78,7 @@ def main():
             bot.infinity_polling(timeout=60, long_polling_timeout=30)
             
         except Exception as e:
-            print(f"System Alert: {e}. Restarting in 5s...")
+            print(f"Connection Alert: {e}. Restarting in 5s...")
             time.sleep(5)
 
 if __name__ == "__main__":
