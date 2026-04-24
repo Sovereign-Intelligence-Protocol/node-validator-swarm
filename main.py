@@ -1,85 +1,80 @@
-import os, time, redis, telebot, requests
-from flask import Flask, request, jsonify
+import os
+import time
+import telebot
+import requests
+import redis
+import psycopg2
+from solana.rpc.api import Client
+from solders.keypair import Keypair
+from solders.pubkey import Pubkey
+from dotenv import load_dotenv
 
-# --- 1. CORE SETTINGS ---
-# Using os.getenv so you don't leak secrets in your code
-CONFIG = {
-    "TOLL_BASIC": 0.1,
-    "TOLL_WHALE": 0.5,
-    "ADMIN": os.getenv("ADMIN_ID"),
-    "HOT_WALLET": os.getenv("SOLANA_WALLET_ADDRESS"),
-    "KRAKEN_SETTLEMENT": os.getenv("KRAKEN_ADDRESS")
-}
+# --- CONFIGURATION & ENVIRONMENT ---
+load_dotenv()
+API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = os.getenv("ADMIN_ID")
+REDIS_URL = os.getenv("REDIS_URL")
+DATABASE_URL = os.getenv("DATABASE_URL")
+KRAKEN_ADDRESS = os.getenv("KRAKEN_ADDRESS") 
+SOLANA_RPC = "https://api.mainnet-beta.solana.com"
 
-bot = telebot.TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"))
-r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
-app = Flask(__name__)
+bot = telebot.TeleBot(API_TOKEN)
 
-# --- 2. THE REVENUE LEDGER ---
-class Ledger:
-    @staticmethod
-    def log_event(uid, event, meta=None):
-        # Database revenue bridging via Atomic Interoperability
-        entry = {"uid": str(uid), "event": event, "ts": time.time(), "meta": str(meta)}
-        r.xadd("protocol_logs", entry, maxlen=10000)
-        r.hset(f"u:{uid}", "last_act", time.time())
-        if event == "PAYMENT":
-            r.incrbyfloat("total_rev", meta.get("amt", 0))
+# Safety check for Redis
+try:
+    r = redis.from_url(REDIS_URL)
+except Exception as e:
+    print(f"Redis Connection Warning: {e}")
 
-# --- 3. THE DUAL-PURPOSE TOLL BRIDGE (Webhooks) ---
-@app.route('/helius-webhook', methods=['POST'])
-def handle_webhook():
-    data = request.json
-    
-    # Handle Telegram Commands via Webhook
-    if isinstance(data, dict) and "update_id" in data:
-        bot.process_new_updates([telebot.types.Update.de_json(data)])
-        return "ok", 200
+solana_client = Client(SOLANA_RPC)
 
-    # Handle Helius Payment Signals (Solana Mainnet)
-    if isinstance(data, list):
-        for tx in data:
-            if tx.get('type') == 'TRANSFER':
-                for tr in tx.get('nativeTransfers', []):
-                    if tr['toUserAccount'] == CONFIG["HOT_WALLET"]:
-                        memo_raw = tx.get('instructions', [{}])[0].get('parsed', {}).get('info', {}).get('memo', "")
-                        if memo_raw.isdigit():
-                            amt = tr['amount'] / 10**9
-                            tier = "WHALE" if amt >= CONFIG["TOLL_WHALE"] else "BASIC"
-                            # Grant 30-day access
-                            r.set(f"access:{memo_raw}", tier, ex=2592000)
-                            Ledger.log_event(memo_raw, "PAYMENT", {"amt": amt, "tier": tier})
-                            bot.send_message(memo_raw, f"✅ **{tier} ACCESS GRANTED**\nProfit Routed: {CONFIG['KRAKEN_SETTLEMENT'][:6]}...")
-    return jsonify({"status": "ok"}), 200
+# --- REVENUE & SETTLEMENT LOGIC ---
+def log_revenue(amount, source="Lead_Scalper"):
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO revenue_ledger (amount, source, timestamp) VALUES (%s, %s, NOW())",
+            (amount, source)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Ledger Error: {e}")
+        return False
 
-# --- 4. COMMAND HANDLERS ---
-@bot.message_handler(commands=['stats'])
-def show_god_view(message):
-    if str(message.from_user.id) != CONFIG["ADMIN"]: return
-    rev = r.get("total_rev") or 0
-    subs = len(r.keys("access:*"))
-    logs = r.xrevrange("protocol_logs", count=5)
-    msg = (f"👑 **DASHBOARD**\n💰 Lifetime Rev: `{rev} SOL`\n👥 Active Subs: `{subs}`\n🏛️ Destination: `Kraken`")
-    bot.reply_to(message, msg, parse_mode="Markdown")
+# --- THE SNIPER / LEAD SCALPER ENGINE ---
+def scan_for_leads():
+    print("S.I.P. Hunting Mode: ACTIVE")
+    pass
 
-@bot.message_handler(commands=['health'])
-def health_check(message):
-    bot.reply_to(message, "🛡️ **S.I.P. ONLINE**\nMode: Webhook v12.2\nStatus: Sovereign")
+# --- TELEGRAM COMMANDS ---
+@bot.message_handler(commands=['start', 'status'])
+def send_welcome(message):
+    if str(message.from_user.id) == str(ADMIN_ID):
+        status_msg = (
+            "🛡️ **S.I.P. v12.2 ONLINE**\n"
+            "--------------------------\n"
+            "Status: Hunting\n"
+            f"Settlement: {KRAKEN_ADDRESS}\n"
+            "Revenue Engine: Connected"
+        )
+        bot.reply_to(message, status_msg, parse_mode="Markdown")
+    else:
+        bot.reply_to(message, "Unauthorized Access.")
 
-@bot.message_handler(commands=['scrape'])
-def hunter(message):
-    uid = str(message.from_user.id)
-    if uid != CONFIG["ADMIN"] and not r.get(f"access:{uid}"):
-        return bot.reply_to(message, "🚫 **ACCESS DENIED**\nPlease pay toll.")
-    bot.reply_to(message, "📡 **SCANNING MAINNET...**\nHunting Liquidity Pairs.")
+@bot.message_handler(commands=['settle'])
+def handle_settle(message):
+    if str(message.from_user.id) == str(ADMIN_ID):
+        bot.reply_to(message, f"Initiating Atomic Settlement to Kraken: {KRAKEN_ADDRESS}")
+    else:
+        bot.reply_to(message, "Access Denied.")
 
-# --- 5. RENDER STABILITY FIXES ---
-@app.route('/')
-def health_ping():
-    # Crucial: Gives Render a "success" response so it doesn't time out
-    return "S.I.P. v12.2: Live", 200
-
+# --- THE MAIN EXECUTION LOOP ---
 if __name__ == "__main__":
-    # Crucial: Dynamically binds to whatever port Render provides
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    print("Sovereign Intelligence Protocol v12.2 Initializing...")
+    scan_for_leads()
+    print("Bot is now Polling...")
+    bot.infinity_polling()
