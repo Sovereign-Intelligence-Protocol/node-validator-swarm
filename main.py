@@ -5,16 +5,15 @@ from solana.rpc.api import Client
 # --- 1. CONFIGURATION & ENVIRONMENT ---
 load_dotenv()
 
-# Variables mapped to your Render Dashboard
+# These keys must exist in your Render Environment Variables
 TOKEN = os.getenv('BOT_TOKEN') 
 ADMIN_ID = os.getenv('ADMIN_ID')
 KRAKEN_ADDR = os.getenv('KRAKEN_ADDRESS')
 DB_URL = os.getenv('DATABASE_URL')
 RPC_URL = os.getenv('RPC_URL')
 
-# Fail-safe check to prevent NoneType crashes
 if not TOKEN:
-    print("❌ FATAL: 'BOT_TOKEN' not found in Render settings!")
+    print("❌ FATAL ERROR: 'BOT_TOKEN' not found in environment!")
     while True: time.sleep(60)
 
 bot = telebot.TeleBot(TOKEN, parse_mode="MARKDOWN")
@@ -23,8 +22,8 @@ solana_client = Client(RPC_URL)
 # --- 2. CORE BUSINESS LOGIC (Revenue & Tracking) ---
 def track_activity(user_id, amount, tx_hash, category="settlement"):
     """
-    Original ledger logic: records transactions and 
-    routes revenue tracking to your Kraken destination.
+    Records every transaction and routes revenue tracking 
+    to your primary Kraken destination.
     """
     try:
         conn = psycopg2.connect(DB_URL)
@@ -36,7 +35,8 @@ def track_activity(user_id, amount, tx_hash, category="settlement"):
             (user_id, amount, KRAKEN_ADDR, tx_hash, category)
         )
         conn.commit()
-        cur.close(); conn.close()
+        cur.close()
+        conn.close()
         print(f"✔️ Ledger Entry: {category} successful.")
     except Exception as e:
         print(f"❌ Database/Ledger Error: {e}")
@@ -53,11 +53,11 @@ def handle_status(message):
         )
         bot.reply_to(message, status_msg)
 
-# --- 4. THE EXECUTION ENGINE (Ghost-Killer Version) ---
+# --- 4. THE EXECUTION ENGINE (Ghost-Killer Build) ---
 def main():
     while True:
         try:
-            # THE CIRCUIT BREAKER: Prevents collisions on startup
+            # THE CIRCUIT BREAKER: Force-clears any lingering Telegram sessions
             print("Action: Opening fresh Telegram handshake...")
             bot.remove_webhook(drop_pending_updates=True)
             time.sleep(5) 
@@ -69,14 +69,14 @@ def main():
                 except:
                     pass
 
-            # Placeholder for Jito Shield & predatory hunting loops
+            # Hunting loops
             print(">>> Jito Shield: PROTECTED")
             print(">>> Solana Liquidity Scan: ACTIVE")
 
             bot.infinity_polling(timeout=90, long_polling_timeout=40)
             
         except Exception as e:
-            # If a 409 Conflict is detected, wait for the swap to finish
+            # Fallback for connection conflicts
             print(f"Connection Alert: {e}. Retrying in 15s...")
             time.sleep(15)
 
