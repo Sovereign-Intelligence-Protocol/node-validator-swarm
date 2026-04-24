@@ -2,13 +2,10 @@ pyTelegramBotAPI
 solana
 solders
 redis
-playwright
-beautifulsoup4
 requests
-lxml
 psycopg2-binary
 python-dotenv
 flask
 gunicorn
 base58
-anchorpy
+websockets
