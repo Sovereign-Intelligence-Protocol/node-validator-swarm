@@ -5,16 +5,16 @@ from solana.rpc.api import Client
 # --- 1. CONFIGURATION & ENVIRONMENT ---
 load_dotenv()
 
-# Mapped to your Render Environment Variables
+# Variables mapped to your Render Dashboard
 TOKEN = os.getenv('BOT_TOKEN') 
 ADMIN_ID = os.getenv('ADMIN_ID')
 KRAKEN_ADDR = os.getenv('KRAKEN_ADDRESS')
 DB_URL = os.getenv('DATABASE_URL')
 RPC_URL = os.getenv('RPC_URL')
 
-# Fail-safe check
+# Fail-safe check to prevent NoneType crashes
 if not TOKEN:
-    print("❌ FATAL ERROR: 'BOT_TOKEN' not found in environment!")
+    print("❌ FATAL: 'BOT_TOKEN' not found in Render settings!")
     while True: time.sleep(60)
 
 bot = telebot.TeleBot(TOKEN, parse_mode="MARKDOWN")
@@ -23,8 +23,8 @@ solana_client = Client(RPC_URL)
 # --- 2. CORE BUSINESS LOGIC (Revenue & Tracking) ---
 def track_activity(user_id, amount, tx_hash, category="settlement"):
     """
-    Original ledger logic: records every transaction and 
-    routes revenue tracking to your primary Kraken destination.
+    Original ledger logic: records transactions and 
+    routes revenue tracking to your Kraken destination.
     """
     try:
         conn = psycopg2.connect(DB_URL)
@@ -36,8 +36,7 @@ def track_activity(user_id, amount, tx_hash, category="settlement"):
             (user_id, amount, KRAKEN_ADDR, tx_hash, category)
         )
         conn.commit()
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
         print(f"✔️ Ledger Entry: {category} successful.")
     except Exception as e:
         print(f"❌ Database/Ledger Error: {e}")
@@ -54,16 +53,11 @@ def handle_status(message):
         )
         bot.reply_to(message, status_msg)
 
-@bot.message_handler(commands=['revenue'])
-def handle_revenue(message):
-    if str(message.from_user.id) == str(ADMIN_ID):
-        bot.reply_to(message, "📊 *Sovereign Ledger:* Fetching latest revenue summary...")
-
 # --- 4. THE EXECUTION ENGINE (Ghost-Killer Version) ---
 def main():
     while True:
         try:
-            # THE CIRCUIT BREAKER: Ensures no collisions with previous instances
+            # THE CIRCUIT BREAKER: Prevents collisions on startup
             print("Action: Opening fresh Telegram handshake...")
             bot.remove_webhook(drop_pending_updates=True)
             time.sleep(5) 
@@ -71,7 +65,7 @@ def main():
             print("Sovereign Intelligence Protocol: Hunting and Tracking Live.")
             if ADMIN_ID:
                 try:
-                    bot.send_message(ADMIN_ID, "🚀 *System Online:* Handshake successful. All protocols active.")
+                    bot.send_message(ADMIN_ID, "🚀 *System Online:* Handshake successful. Protocols active.")
                 except:
                     pass
 
@@ -82,8 +76,8 @@ def main():
             bot.infinity_polling(timeout=90, long_polling_timeout=40)
             
         except Exception as e:
-            # If a collision (409) is ever detected again, wait for the swap
-            print(f"Connection Conflict: {e}. Retrying in 15s...")
+            # If a 409 Conflict is detected, wait for the swap to finish
+            print(f"Connection Alert: {e}. Retrying in 15s...")
             time.sleep(15)
 
 if __name__ == "__main__":
