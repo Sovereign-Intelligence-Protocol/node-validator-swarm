@@ -4,10 +4,8 @@ import time
 import asyncio
 import logging
 import httpx
-import psycopg2
 import base58
 import telebot
-from flask import Flask, request, jsonify
 from datetime import datetime
 from threading import Thread
 
@@ -21,13 +19,14 @@ from solana.rpc.async_api import AsyncClient
 
 # --- S.I.P. v5.5 GOD MODE: FULL INTEGRATION ---
 MASTER_CONFIG = {
-    "VERSION": "5.5 GOD MODE (FULL-SPECTRUM)",
+    "VERSION": "5.5 GOD MODE (POLLING)",
     "POLLING_RATE_MS": 100,
-    "HELIUS_API_KEY": os.getenv("HELIUS_API_KEY", "e4fbf95c-a828-44ec-bfdb-07be33d18c03"),
+    "HELIUS_API_KEY": os.getenv("HELIUS_API_KEY"),
     "BRIDGE_ADDR": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
     "KRAKEN_ADDR": "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM",
     "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
-    "TELEGRAM_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", "8736219269:AAFegdWXOWkZhUKQaMFG4BxQ0wRjBTFrOc0"),
+    "TELEGRAM_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN"), # Cleaned: No hard-coded fallback
+    "TELEGRAM_ADMIN_ID": os.getenv("TELEGRAM_ADMIN_ID"),
     "GAS_RESERVE_SOL": 0.01,
 }
 
@@ -35,14 +34,16 @@ MASTER_CONFIG = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger("SIP_v5.5_GOD_MODE")
 
-app = Flask(__name__)
+# Initialize Bot
+if not MASTER_CONFIG["TELEGRAM_TOKEN"]:
+    logger.error("[FATAL] TELEGRAM_BOT_TOKEN missing from environment variables.")
+    exit(1)
+
 bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"])
 
-# --- CRITICAL FIX: INITIALIZATION ---
 def init_bot():
     try:
-        # Avoids the 'drop_pending_updates' keyword crash
-        bot.remove_webhook()
+        bot.remove_webhook() # Clears any stuck webhook settings
         logger.info("✅ Telegram initialization successful.")
     except Exception as e:
         logger.error(f"❌ Initialization Error: {e}")
@@ -55,7 +56,8 @@ class LeadScalper:
 
     async def scan_for_leads(self):
         logger.info("[SCAN] Searching for alpha signals...")
-        pass
+        # Add your scanning logic here
+        await asyncio.sleep(10) 
 
 # --- SETTLEMENT ENGINE ---
 async def submit_jito_sweep(amount_sol):
@@ -94,47 +96,25 @@ async def submit_jito_sweep(amount_sol):
         logger.error(f"❌ Sweep Error: {e}")
         return None
 
-# --- WEBHOOK HANDLER ---
-@app.route('/webhook', methods=['POST'])
-def handle_webhook():
-    data = request.json
-    if not data: return jsonify({"status": "empty"}), 400
-
-    # Handle Telegram Updates
-    if 'message' in data or 'callback_query' in data:
-        update = telebot.types.Update.de_json(data)
-        bot.process_new_updates([update])
-        return jsonify({"status": "Telegram Processed"}), 200
-
-    # Handle Helius Transactions
-    if isinstance(data, list) and len(data) > 0 and 'signature' in data[0]:
-        logger.info(f"Solana Signal Detected: {data[0]['signature']}")
-        return jsonify({"status": "Helius Processed"}), 200
-
-    return jsonify({"status": "Received"}), 200
-
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy", "version": MASTER_CONFIG["VERSION"]}), 200
-
 # --- TELEGRAM COMMANDS ---
 @bot.message_handler(commands=['start', 'health', 'status'])
 def send_welcome(message):
     bot.reply_to(message, f"🛡️ **S.I.P. v5.5 ONLINE**\n\n**Treasury:** `{MASTER_CONFIG['KRAKEN_ADDR'][:6]}...`\n**Status:** Healthy\n**Mode:** Active Hunting")
 
-# --- EXECUTION ---
+# --- MAIN EXECUTION ---
+async def main_loop():
+    scalper = LeadScalper()
+    while True:
+        await scalper.scan_for_leads()
+        await asyncio.sleep(5)
+
 if __name__ == "__main__":
     init_bot()
     
-    # Render Webhook Setup
-    RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
-    if RENDER_URL:
-        bot.set_webhook(url=f"{RENDER_URL}/webhook")
-        logger.info(f"🛰️ Webhook set to {RENDER_URL}/webhook")
-    else:
-        # Fallback to polling for local testing
-        Thread(target=bot.infinity_polling, daemon=True).start()
-        logger.info("🎯 Started fallback polling mode.")
+    # Start Telegram Polling in a background thread
+    # This is the standard way to run a bot on a Render Worker
+    Thread(target=bot.infinity_polling, daemon=True).start()
+    logger.info("🎯 S.I.P. Polling Engine Started.")
 
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    # Start the async trading loop
+    asyncio.run(main_loop())
