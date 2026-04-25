@@ -1,120 +1,102 @@
 import os
-import json
-import time
 import asyncio
 import logging
-import httpx
-import base58
-import telebot
-from datetime import datetime
-from threading import Thread
-
-# Solana specific imports
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
-from solders.system_program import TransferParams, transfer
-from solders.transaction import Transaction
-from solders.message import Message
+import requests
 from solana.rpc.async_api import AsyncClient
+from solders.pubkey import Pubkey
+from solders.keypair import Keypair
+from telegram import Bot
 
-# --- S.I.P. v5.5 GOD MODE: FULL INTEGRATION ---
-MASTER_CONFIG = {
-    "VERSION": "5.5 GOD MODE (POLLING)",
-    "POLLING_RATE_MS": 100,
-    "HELIUS_API_KEY": os.getenv("HELIUS_API_KEY"),
-    "BRIDGE_ADDR": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
-    "KRAKEN_ADDR": "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM",
-    "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
-    "TELEGRAM_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN"), # Cleaned: No hard-coded fallback
-    "TELEGRAM_ADMIN_ID": os.getenv("TELEGRAM_ADMIN_ID"),
-    "GAS_RESERVE_SOL": 0.01,
-}
+# --- CONFIGURATION (Render Environment Variables) ---
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
+SEED_WALLET_PK = os.getenv("SOLANA_PRIVATE_KEY")        # Main Capital
+JITO_SIGNER_PK = os.getenv("JITO_SIGNER_PRIVATE_KEY")   # Jito Tip Wallet
+RUGCHECK_API_KEY = os.getenv("RUGCHECK_API_KEY")
+RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
-# Setup Master Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger("SIP_v5.5_GOD_MODE")
+# Initialize Infrastructure
+solana_client = AsyncClient(RPC_URL)
+tg_bot = Bot(token=TELEGRAM_TOKEN)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("SIP_Engine")
 
-# Initialize Bot
-if not MASTER_CONFIG["TELEGRAM_TOKEN"]:
-    logger.error("[FATAL] TELEGRAM_BOT_TOKEN missing from environment variables.")
-    exit(1)
-
-bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"])
-
-def init_bot():
-    try:
-        bot.remove_webhook() # Clears any stuck webhook settings
-        logger.info("✅ Telegram initialization successful.")
-    except Exception as e:
-        logger.error(f"❌ Initialization Error: {e}")
-
-# --- CORE TRADING ENGINE ---
-class LeadScalper:
+class SIP_Controller:
     def __init__(self):
-        self.active_leads = []
-        self.win_rate = 0.95
+        self.seed_keypair = Keypair.from_base58_string(SEED_WALLET_PK)
+        self.jito_keypair = Keypair.from_base58_string(JITO_SIGNER_PK)
+        self.threshold = 0.01  # Minimum SOL for Jito Signer
 
-    async def scan_for_leads(self):
-        logger.info("[SCAN] Searching for alpha signals...")
-        # Add your scanning logic here
-        await asyncio.sleep(10) 
+    # 1. RUGCHECK FILTER
+    async def rug_check_passed(self, mint_address):
+        if not RUGCHECK_API_KEY: return True # Skip if no key
+        url = f"https://api.rugcheck.xyz/v1/tokens/{mint_address}/report"
+        headers = {"Authorization": f"Bearer {RUGCHECK_API_KEY}"}
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            data = response.json()
+            score = data.get('score', 0)
+            if score > 500:
+                logger.warning(f"⚠️ High Risk Detected ({score}) for {mint_address}")
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"RugCheck Error: {e}")
+            return False # Safety first: fail if check fails
 
-# --- SETTLEMENT ENGINE ---
-async def submit_jito_sweep(amount_sol):
-    private_key_b58 = os.getenv("SOLANA_PRIVATE_KEY")
-    if not private_key_b58:
-        logger.error("[FATAL] Private key missing.")
-        return None
+    # 2. BALANCE MONITOR & TELEGRAM REPORT
+    async def get_sol_balance(self, pubkey):
+        try:
+            resp = await solana_client.get_balance(pubkey)
+            return resp.value / 1_000_000_000
+        except: return 0.0
 
-    try:
-        sender_keypair = Keypair.from_base58_string(private_key_b58)
-        sender_pubkey = sender_keypair.pubkey()
-        receiver_pubkey = Pubkey.from_string(MASTER_CONFIG["KRAKEN_ADDR"])
+    async def send_status_report(self, is_alert=False):
+        seed_bal = await self.get_sol_balance(self.seed_keypair.pubkey())
+        jito_bal = await self.get_sol_balance(self.jito_keypair.pubkey())
         
-        rpc_url = f"https://mainnet.helius-rpc.com/?api-key={MASTER_CONFIG['HELIUS_API_KEY']}"
-        async with AsyncClient(rpc_url) as client:
-            recent_blockhash_data = await client.get_latest_blockhash()
-            recent_blockhash = recent_blockhash_data.value.blockhash
-            
-            ix = transfer(TransferParams(
-                from_pubkey=sender_pubkey, 
-                to_pubkey=receiver_pubkey, 
-                lamports=int(amount_sol * 1e9)
-            ))
-            
-            msg = Message([ix], sender_pubkey)
-            tx = Transaction([sender_keypair], msg, recent_blockhash)
-            serialized_tx = base58.b58encode(bytes(tx)).decode('ascii')
-            
-            async with httpx.AsyncClient() as http_client:
-                resp = await http_client.post(
-                    MASTER_CONFIG["JITO_URL"], 
-                    json={"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
-                )
-                return resp.json().get("result")
-    except Exception as e:
-        logger.error(f"❌ Sweep Error: {e}")
-        return None
+        status_emoji = "🚨 ALERT" if is_alert else "📊 S.I.P. STATUS"
+        message = (
+            f"<b>{status_emoji}</b>\n\n"
+            f"💰 <b>Seed Wallet:</b> {seed_bal:.4f} SOL\n"
+            f"⚡ <b>Jito Signer:</b> {jito_bal:.4f} SOL\n"
+            f"🛡️ <b>RugCheck:</b> {'Active' if RUGCHECK_API_KEY else 'Off'}\n"
+            f"-------------------\n"
+            f"Status: {'✅ Hunting' if jito_bal > self.threshold else '⚠️ Refill Jito'}"
+        )
+        await tg_bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode="HTML")
 
-# --- TELEGRAM COMMANDS ---
-@bot.message_handler(commands=['start', 'health', 'status'])
-def send_welcome(message):
-    bot.reply_to(message, f"🛡️ **S.I.P. v5.5 ONLINE**\n\n**Treasury:** `{MASTER_CONFIG['KRAKEN_ADDR'][:6]}...`\n**Status:** Healthy\n**Mode:** Active Hunting")
+    # 3. THE EXECUTION ENGINE
+    async def run_hunt(self):
+        await self.send_status_report() # Startup report
+        iteration = 0
+        
+        while True:
+            try:
+                # [SCAN PHASE]
+                logger.info(f"[SCAN] Cycle {iteration}: Monitoring DEX pools...")
+                # Logic to find new mints would be here
+                
+                # [SECURITY PHASE]
+                # Example: if found_token:
+                #    if await self.rug_check_passed(found_token):
+                #        await self.execute_trade(found_token)
 
-# --- MAIN EXECUTION ---
-async def main_loop():
-    scalper = LeadScalper()
-    while True:
-        await scalper.scan_for_leads()
-        await asyncio.sleep(5)
+                # [MAINTENANCE PHASE]
+                if iteration % 60 == 0 and iteration != 0: # Hourly check
+                    jito_bal = await self.get_sol_balance(self.jito_keypair.pubkey())
+                    if jito_bal < self.threshold:
+                        await self.send_status_report(is_alert=True)
+                
+                if iteration % 1440 == 0 and iteration != 0: # Daily check
+                    await self.send_status_report()
+
+                iteration += 1
+                await asyncio.sleep(60)
+            except Exception as e:
+                logger.error(f"Runtime Error: {e}")
+                await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    init_bot()
-    
-    # Start Telegram Polling in a background thread
-    # This is the standard way to run a bot on a Render Worker
-    Thread(target=bot.infinity_polling, daemon=True).start()
-    logger.info("🎯 S.I.P. Polling Engine Started.")
-
-    # Start the async trading loop
-    asyncio.run(main_loop())
+    sip = SIP_Controller()
+    asyncio.run(sip.run_hunt())
