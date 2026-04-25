@@ -54,11 +54,14 @@ def handle_commands(message):
 
 # --- MAIN RUNNER ---
 def run_bot_polling():
-    """Standard polling without extra keyword arguments to avoid TypeErrors."""
-    bot.remove_webhook()
-    logger.info("📡 Bot Listener Starting...")
-    # Removed 'non_stop=True' to avoid 'multiple values' error seen in logs
-    bot.infinity_polling(timeout=60)
+    """The most basic polling call possible to avoid argument conflicts."""
+    try:
+        bot.remove_webhook()
+        logger.info("📡 Bot Listener Starting...")
+        # Stripped of ALL arguments (timeout, non_stop, etc.)
+        bot.infinity_polling()
+    except Exception as e:
+        logger.error(f"Polling Error: {e}")
 
 async def main_engine():
     logger.info("🚀 S.I.P. Engine Starting...")
