@@ -8,10 +8,11 @@ from solders.pubkey import Pubkey
 from solders.keypair import Keypair
 
 # --- CONFIGURATION ---
+# Pulls from Render. Uses "or" logic to catch both naming styles.
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
-SEED_WALLET_PK = os.getenv("SOLANA_PRIVATE_KEY")
-JITO_SIGNER_PK = os.getenv("JITO_SIGNER_PRIVATE_KEY")
+SEED_PK_STR = os.getenv("SOLANA_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
+JITO_PK_STR = os.getenv("JITO_SIGNER_PRIVATE_KEY") or os.getenv("JITO_KEY")
 RUGCHECK_API_KEY = os.getenv("RUGCHECK_API_KEY")
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
@@ -24,12 +25,16 @@ logger = logging.getLogger("SIP_Engine")
 class SIP_Controller:
     def __init__(self):
         try:
-            # Setup Keypairs
-            self.seed_kp = Keypair.from_base58_string(SEED_WALLET_PK)
-            self.jito_kp = Keypair.from_base58_string(JITO_SIGNER_PK)
+            # 1. Critical Key Loading
+            if not SEED_PK_STR:
+                raise ValueError("ERROR: SOLANA_PRIVATE_KEY is missing in Render variables.")
+            
+            self.seed_kp = Keypair.from_base58_string(SEED_PK_STR)
+            # If Jito key is missing, fall back to Seed Wallet for signing
+            self.jito_kp = Keypair.from_base58_string(JITO_PK_STR) if JITO_PK_STR else self.seed_kp
             self.threshold = 0.01 
             
-            # Remove Webhooks to eliminate the 404 Error
+            # 2. Kill Webhooks (Stops the 404 errors permanently)
             bot.remove_webhook()
             logger.info(f"✅ S.I.P. LOADED | Seed Address: {self.seed_kp.pubkey()}")
         except Exception as e:
@@ -37,6 +42,7 @@ class SIP_Controller:
             raise
 
     async def get_balance(self, pubkey):
+        """Checks the blockchain for SOL balance."""
         try:
             r = await solana_client.get_balance(pubkey)
             return r.value / 1_000_000_000
@@ -44,6 +50,7 @@ class SIP_Controller:
             return 0.0
 
     async def send_status_report(self, alert=False):
+        """Sends the health report to your Telegram."""
         s_bal = await self.get_balance(self.seed_kp.pubkey())
         j_bal = await self.get_balance(self.jito_kp.pubkey())
         
@@ -74,11 +81,12 @@ class SIP_Controller:
                 logger.warning(f"🚨 SKIP: {mint_address} is too risky (Score: {score})")
                 return False
             return True
-        except: 
+        except Exception: 
             return False
 
     async def run_engine(self):
-        # Immediate confirmation that the bot is alive and 404 is fixed
+        """The main 'Active Hunting' loop."""
+        # Confirm live status immediately
         await self.send_status_report()
         cycle = 0
         while True:
