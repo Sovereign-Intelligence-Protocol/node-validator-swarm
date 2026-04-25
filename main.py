@@ -71,12 +71,70 @@ async def submit_jito_sweep(amount_sol):
         
         rpc_url = f"https://mainnet.helius-rpc.com/?api-key={MASTER_CONFIG['HELIUS_API_KEY']}"
         async with AsyncClient(rpc_url) as client:
-            recent_blockhash = (await client.get_latest_blockhash()).value.blockhash
-            ix = transfer(TransferParams(from_pubkey=sender_pubkey, to_pubkey=receiver_pubkey, lamports=int(amount_sol * 1e9)))
+            recent_blockhash_data = await client.get_latest_blockhash()
+            recent_blockhash = recent_blockhash_data.value.blockhash
+            
+            ix = transfer(TransferParams(
+                from_pubkey=sender_pubkey, 
+                to_pubkey=receiver_pubkey, 
+                lamports=int(amount_sol * 1e9)
+            ))
+            
             msg = Message([ix], sender_pubkey)
             tx = Transaction([sender_keypair], msg, recent_blockhash)
             serialized_tx = base58.b58encode(bytes(tx)).decode('ascii')
             
             async with httpx.AsyncClient() as http_client:
-                resp = await http_client.post(MASTER_CONFIG["JITO_URL"], json={"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]})
+                resp = await http_client.post(
+                    MASTER_CONFIG["JITO_URL"], 
+                    json={"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
+                )
                 return resp.json().get("result")
+    except Exception as e:
+        logger.error(f"❌ Sweep Error: {e}")
+        return None
+
+# --- WEBHOOK HANDLER ---
+@app.route('/webhook', methods=['POST'])
+def handle_webhook():
+    data = request.json
+    if not data: return jsonify({"status": "empty"}), 400
+
+    # Handle Telegram Updates
+    if 'message' in data or 'callback_query' in data:
+        update = telebot.types.Update.de_json(data)
+        bot.process_new_updates([update])
+        return jsonify({"status": "Telegram Processed"}), 200
+
+    # Handle Helius Transactions
+    if isinstance(data, list) and len(data) > 0 and 'signature' in data[0]:
+        logger.info(f"Solana Signal Detected: {data[0]['signature']}")
+        return jsonify({"status": "Helius Processed"}), 200
+
+    return jsonify({"status": "Received"}), 200
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy", "version": MASTER_CONFIG["VERSION"]}), 200
+
+# --- TELEGRAM COMMANDS ---
+@bot.message_handler(commands=['start', 'health', 'status'])
+def send_welcome(message):
+    bot.reply_to(message, f"🛡️ **S.I.P. v5.5 ONLINE**\n\n**Treasury:** `{MASTER_CONFIG['KRAKEN_ADDR'][:6]}...`\n**Status:** Healthy\n**Mode:** Active Hunting")
+
+# --- EXECUTION ---
+if __name__ == "__main__":
+    init_bot()
+    
+    # Render Webhook Setup
+    RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
+    if RENDER_URL:
+        bot.set_webhook(url=f"{RENDER_URL}/webhook")
+        logger.info(f"🛰️ Webhook set to {RENDER_URL}/webhook")
+    else:
+        # Fallback to polling for local testing
+        Thread(target=bot.infinity_polling, daemon=True).start()
+        logger.info("🎯 Started fallback polling mode.")
+
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
