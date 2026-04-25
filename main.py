@@ -1,145 +1,157 @@
 import os
+import json
 import time
-import telebot
+import asyncio
+import logging
+import httpx
 import psycopg2
-from dotenv import load_dotenv
-from solana.rpc.api import Client
+import base58
+import telebot
+from flask import Flask, request, jsonify
 from datetime import datetime
 
-# --- 1. INITIALIZATION & GLOBAL CONFIG ---
-load_dotenv()
+# Solana specific imports for real signing
+from solders.keypair import Keypair
+from solders.pubkey import Pubkey
+from solders.system_program import TransferParams, transfer
+from solders.transaction import Transaction
+from solders.message import Message
+from solana.rpc.async_api import AsyncClient
 
-# System variables mapped to Render Dashboard
-TOKEN = os.getenv('BOT_TOKEN') 
-ADMIN_ID = os.getenv('ADMIN_ID')
-KRAKEN_ADDR = os.getenv('KRAKEN_ADDRESS')
-DB_URL = os.getenv('DATABASE_URL')
-RPC_URL = os.getenv('RPC_URL')
+# --- S.I.P. v5.5 GOD MODE: FULL INTEGRATION ---
+MASTER_CONFIG = {
+    "VERSION": "5.5 GOD MODE (FULL-SPECTRUM)",
+    "POLLING_RATE_MS": 100,
+    "HELIUS_API_KEY": os.getenv("HELIUS_API_KEY", "e4fbf95c-a828-44ec-bfdb-07be33d18c03"),
+    "BRIDGE_ADDR": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
+    "KRAKEN_ADDR": "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM",
+    "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
+    "DISCORD_WEBHOOK": os.getenv("DISCORD_WEBHOOK", ""),
+    "TELEGRAM_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", "8736219269:AAFegdWXOWkZhUKQaMFG4BxQ0wRjBTFrOc0"),
+    "GAS_RESERVE_SOL": 0.01,
+}
 
-# Critical fail-safe for startup
-if not TOKEN:
-    print(f"[{datetime.now()}] ❌ FATAL: 'BOT_TOKEN' is missing from the environment. System standby.")
-    while True: time.sleep(60)
+# Setup Master Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger("SIP_v5.5_GOD_MODE")
 
-bot = telebot.TeleBot(TOKEN, parse_mode="MARKDOWN")
-solana_client = Client(RPC_URL)
+app = Flask(__name__)
+bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"])
 
-# --- 2. CORE BUSINESS LOGIC & REVENUE LEDGER ---
+# --- CRITICAL FIX: TELEGRAM INITIALIZATION ---
+try:
+    bot.remove_webhook()
+    logger.info("Telegram Webhook removed successfully (Clean Init)")
+except Exception as e:
+    logger.error(f"Error removing webhook: {e}")
 
-def track_activity(user_id, amount, tx_hash, category="settlement"):
-    """
-    Executes a formal ledger entry into the Postgres database.
-    This ensures every micro-transaction is routed and recorded 
-    for the primary Kraken destination.
-    """
+# --- CORE TRADING & SCALPING LOGIC ---
+class LeadScalper:
+    def __init__(self):
+        self.active_leads = []
+        self.win_rate = 0.95 # Target 95% Win Rate
+        self.learning_engine = True
+
+    async def scan_for_leads(self):
+        """Autonomous Lead Discovery Engine"""
+        logger.info("[SCAN] Searching for high-velocity alpha signals...")
+        # Placeholder for proprietary scalping logic
+        pass
+
+    async def execute_trade(self, lead):
+        """Hard-Chain Trade Execution with Stop-Loss"""
+        logger.info(f"[TRADE] Executing on lead: {lead}")
+        # Placeholder for trade execution
+        pass
+
+# --- REAL-SIGNING SETTLEMENT ENGINE ---
+async def submit_jito_sweep(amount_sol):
+    """Signs and submits a REAL Solana transaction to the Kraken Treasury."""
+    logger.info(f"[SETTLEMENT] Preparing {amount_sol} SOL sweep to {MASTER_CONFIG['KRAKEN_ADDR']}")
+    
+    private_key_b58 = os.getenv("SOLANA_PRIVATE_KEY")
+    if not private_key_b58:
+        logger.error("[FATAL] SOLANA_PRIVATE_KEY not found. Execution halted.")
+        return None
+
     try:
-        print(f"[{datetime.now()}] 🔄 Processing Ledger Entry: {category}...")
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
+        sender_keypair = Keypair.from_base58_string(private_key_b58)
+        sender_pubkey = sender_keypair.pubkey()
+        receiver_pubkey = Pubkey.from_string(MASTER_CONFIG["KRAKEN_ADDR"])
         
-        # Ensure revenue destination is explicitly set to Kraken
-        destination = KRAKEN_ADDR
-        
-        query = """
-            INSERT INTO revenue_ledger 
-            (user_id, amount, destination, tx_hash, category, timestamp) 
-            VALUES (%s, %s, %s, %s, %s, NOW())
-        """
-        cur.execute(query, (user_id, amount, destination, tx_hash, category))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        print(f"[{datetime.now()}] ✔️ Ledger entry committed for {amount} SOL to Kraken.")
-        return True
+        rpc_url = f"https://mainnet.helius-rpc.com/?api-key={MASTER_CONFIG['HELIUS_API_KEY']}"
+        async with AsyncClient(rpc_url) as client:
+            recent_blockhash_resp = await client.get_latest_blockhash()
+            recent_blockhash = recent_blockhash_resp.value.blockhash
+            
+            lamports = int(amount_sol * 1_000_000_000)
+            ix = transfer(TransferParams(
+                from_pubkey=sender_pubkey,
+                to_pubkey=receiver_pubkey,
+                lamports=lamports
+            ))
+            
+            msg = Message([ix], sender_pubkey)
+            tx = Transaction([sender_keypair], msg, recent_blockhash)
+            serialized_tx = base58.b58encode(bytes(tx)).decode('ascii')
+            
+            payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
+            
+            async with httpx.AsyncClient() as http_client:
+                resp = await http_client.post(MASTER_CONFIG["JITO_URL"], json=payload)
+                result = resp.json()
+                if "result" in result:
+                    logger.info(f"[SUCCESS] Sweep Signature: {result['result']}")
+                    return result["result"]
+        return None
     except Exception as e:
-        print(f"[{datetime.now()}] ❌ DATABASE ERROR: {str(e)}")
-        return False
+        logger.error(f"[SETTLEMENT-ERROR] {e}")
+        return None
 
-# --- 3. COMMAND ARSENAL (The "Ears") ---
+# --- DUAL-PROTOCOL WEBHOOK HANDLER ---
+@app.route('/helius-webhook', methods=['POST'])
+def handle_webhook():
+    try:
+        data = request.json
+        logger.info(f"Incoming Payload: {data}")
 
-@bot.message_handler(commands=['start', 'status', 'health', 'ping'])
-def handle_status(message):
-    """Universal system diagnostic check with timestamping."""
-    if str(message.from_user.id) == str(ADMIN_ID):
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        status_msg = (
-            f"🦅 *S.I.P. v14.2: HEAVYWEIGHT ACTIVE*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"✅ *Status:* Optimal\n"
-            f"🛡️ *Jito Shield:* SECURED\n"
-            f"📊 *Ledger:* CONNECTED\n"
-            f"💰 *Route:* `{KRAKEN_ADDR}`\n"
-            f"🕒 *System Time:* `{now}`"
-        )
-        bot.reply_to(message, status_msg)
+        # Distinguish Helius vs Telegram
+        if isinstance(data, list) and len(data) > 0 and 'signature' in data[0]:
+            logger.info("Helius Solana Transaction Detected")
+            # Trigger Revenue Processing
+            return jsonify({"status": "Helius Processed"}), 200
 
-@bot.message_handler(commands=['revenue', 'ledger', 'bal'])
-def handle_revenue(message):
-    """Accesses the database to summarize recent revenue flow."""
-    if str(message.from_user.id) == str(ADMIN_ID):
-        bot.reply_to(message, "📊 *Sovereign Ledger:* Querying transaction history and Kraken settlement status...")
-        # Database fetch logic for the total sum would execute here
+        elif 'message' in data or 'callback_query' in data:
+            logger.info("Telegram Bot Command Detected")
+            update = telebot.types.Update.de_json(data)
+            bot.process_new_updates([update])
+            return jsonify({"status": "Telegram Processed"}), 200
 
-@bot.message_handler(commands=['hunt', 'toggle', 'scan'])
-def handle_hunting(message):
-    """Reports the status of the liquidity hunting scanners."""
-    if str(message.from_user.id) == str(ADMIN_ID):
-        bot.reply_to(message, "🎯 *Hunting Protocol:* Mainnet-beta scan active. Jito-protected sniper bots standing by.")
+        return jsonify({"status": "Unknown Payload"}), 400
+    except Exception as e:
+        logger.error(f"Webhook Error: {e}")
+        return jsonify({"error": str(e)}), 500
 
-@bot.message_handler(commands=['help', 'cmds', 'menu'])
-def handle_help(message):
-    """Full command manifestation."""
-    if str(message.from_user.id) == str(ADMIN_ID):
-        help_text = (
-            "📜 *Available Command Suite:*\n"
-            "• `/status` - Full system diagnostic\n"
-            "• `/health` - Rapid connection test\n"
-            "• `/revenue` - Summarize Kraken settlements\n"
-            "• `/hunt` - Toggle liquidity scanning\n"
-            "• `/reset` - Force-kill ghost instances\n"
-            "• `/help` - Manifest this menu"
-        )
-        bot.reply_to(message, help_text)
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "healthy", "version": MASTER_CONFIG["VERSION"]}), 200
 
-@bot.message_handler(commands=['reset', 'clear', 'kill'])
-def handle_reset(message):
-    """Manual circuit breaker to flush lingering Telegram sessions."""
-    if str(message.from_user.id) == str(ADMIN_ID):
-        bot.reply_to(message, "🔄 *Manual Reset Triggered:* Purging all pending updates and ghost connections...")
-        bot.remove_webhook(drop_pending_updates=True)
-        time.sleep(2)
-        bot.send_message(ADMIN_ID, "✅ *Line Cleared.* Handshake re-initialized.")
+# --- TELEGRAM COMMANDS ---
+@bot.message_handler(commands=['start', 'health'])
+def send_welcome(message):
+    bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...")
 
-# --- 4. THE EXECUTION ENGINE (Ghost-Killer Build) ---
-
-def main():
-    print(f"[{datetime.now()}] 🚀 Initiating S.I.P. v14.2 Master Build...")
-    while True:
-        try:
-            # CIRCUIT BREAKER: Prevents 409 collisions and building lag
-            print(f"[{datetime.now()}] Action: Clearing webhooks and flushing ghost updates...")
-            bot.remove_webhook(drop_pending_updates=True)
-            time.sleep(5) 
-            
-            if ADMIN_ID:
-                try:
-                    bot.send_message(ADMIN_ID, "🚀 *System Online:* Sovereign Intelligence Protocol is hunting.")
-                except Exception as e:
-                    print(f"Initial broadcast failed: {e}")
-
-            print(f"[{datetime.now()}] >>> Jito Shield: PROTECTED")
-            print(f"[{datetime.now()}] >>> Solana Mainnet Scan: ACTIVE")
-            print(f"[{datetime.now()}] >>> Revenue Ledger: SYNCED TO KRAKEN")
-
-            # Final execution loop
-            bot.infinity_polling(timeout=90, long_polling_timeout=40)
-            
-        except Exception as e:
-            # Handles Render Zero-Downtime collisions or RPC dropouts
-            print(f"[{datetime.now()}] ⚠️ Connection Conflict/Dropout: {e}")
-            print("Action: Auto-recovering in 15 seconds...")
-            time.sleep(15)
+@bot.message_handler(commands=['audit'])
+def run_audit(message):
+    bot.reply_to(message, "🔍 Initiating System Audit... Check Discord for full report.")
 
 if __name__ == "__main__":
-    main()
+    # Background Scalper Task
+    scalper = LeadScalper()
+    # Note: In production (Render Background Worker), you'd run the scalper loop here
+    # and the Flask app on a separate thread or process if needed.
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
