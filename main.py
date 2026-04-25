@@ -2,110 +2,106 @@ import os
 import asyncio
 import logging
 import requests
+import telebot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
-from telegram import Bot
 
-# --- CONFIGURATION (Must match your Render Environment EXACTLY) ---
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")        # Your 8736... API Key
-ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")              # Your numerical User ID
-SEED_WALLET_PK = os.getenv("SOLANA_PRIVATE_KEY")        # Seed Wallet (0.365 SOL)
-JITO_SIGNER_PK = os.getenv("JITO_SIGNER_PRIVATE_KEY")   # Jito Signer Key
-RUGCHECK_API_KEY = os.getenv("RUGCHECK_API_KEY")       # Security API Key
+# --- CONFIGURATION ---
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
+SEED_WALLET_PK = os.getenv("SOLANA_PRIVATE_KEY")
+JITO_SIGNER_PK = os.getenv("JITO_SIGNER_PRIVATE_KEY")
+RUGCHECK_API_KEY = os.getenv("RUGCHECK_API_KEY")
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
 # Initialize Infrastructure
+bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode='HTML')
 solana_client = AsyncClient(RPC_URL)
-tg_bot = Bot(token=TELEGRAM_TOKEN)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SIP_Engine")
 
 class SIP_Controller:
     def __init__(self):
         try:
-            # Derived Infrastructure
-            self.seed_keypair = Keypair.from_base58_string(SEED_WALLET_PK)
-            self.jito_keypair = Keypair.from_base58_string(JITO_SIGNER_PK)
-            self.threshold = 0.01  # Emergency alert if Jito Signer < 0.01 SOL
-            logger.info(f"✅ Infrastructure Verified. Seed Address: {self.seed_keypair.pubkey()}")
+            # Setup Keypairs
+            self.seed_kp = Keypair.from_base58_string(SEED_WALLET_PK)
+            self.jito_kp = Keypair.from_base58_string(JITO_SIGNER_PK)
+            self.threshold = 0.01 
+            
+            # Remove Webhooks to eliminate the 404 Error
+            bot.remove_webhook()
+            logger.info(f"✅ S.I.P. LOADED | Seed Address: {self.seed_kp.pubkey()}")
         except Exception as e:
-            logger.error(f"❌ CRITICAL CONFIG ERROR: {e}")
+            logger.error(f"❌ Initialization Fail: {e}")
             raise
 
-    # 1. SECURITY FILTER (RugCheck.xyz)
-    async def rug_check_passed(self, mint_address):
-        if not RUGCHECK_API_KEY: 
-            logger.warning("⚠️ RugCheck key missing! Skipping security check.")
-            return True 
-        
-        url = f"https://api.rugcheck.xyz/v1/tokens/{mint_address}/report"
-        headers = {"Authorization": f"Bearer {RUGCHECK_API_KEY}"}
+    async def get_balance(self, pubkey):
         try:
-            response = requests.get(url, headers=headers, timeout=5)
-            data = response.json()
-            score = data.get('score', 0)
-            if score > 500:
-                logger.warning(f"🚨 RUG DETECTED: {mint_address} (Score: {score})")
-                return False
-            return True
-        except Exception as e:
-            logger.error(f"⚠️ RugCheck API unavailable: {e}")
-            return False # Safety: if we can't verify it, we don't buy it.
-
-    # 2. HEALTH & BALANCE MONITORING
-    async def get_sol_balance(self, pubkey):
-        try:
-            resp = await solana_client.get_balance(pubkey)
-            return resp.value / 1_000_000_000
-        except: 
+            r = await solana_client.get_balance(pubkey)
+            return r.value / 1_000_000_000
+        except Exception: 
             return 0.0
 
-    async def send_status_report(self, is_alert=False):
-        seed_bal = await self.get_sol_balance(self.seed_keypair.pubkey())
-        jito_bal = await self.get_sol_balance(self.jito_keypair.pubkey())
+    async def send_status_report(self, alert=False):
+        s_bal = await self.get_balance(self.seed_kp.pubkey())
+        j_bal = await self.get_balance(self.jito_kp.pubkey())
         
-        status_emoji = "🚨 SYSTEM ALERT" if is_alert else "📊 S.I.P. STATUS"
-        message = (
+        status_emoji = "🚨 ALERT" if alert else "📊 S.I.P. STATUS"
+        msg = (
             f"<b>{status_emoji}</b>\n\n"
-            f"💰 <b>Seed Wallet:</b> {seed_bal:.4f} SOL\n"
-            f"⚡ <b>Jito Signer:</b> {jito_bal:.4f} SOL\n"
-            f"🛡️ <b>RugCheck:</b> {'ACTIVE' if RUGCHECK_API_KEY else 'OFF'}\n"
+            f"💰 <b>Seed Wallet:</b> {s_bal:.4f} SOL\n"
+            f"⚡ <b>Jito Signer:</b> {j_bal:.4f} SOL\n"
+            f"🛡️ <b>RugCheck API:</b> {'CONNECTED' if RUGCHECK_API_KEY else 'OFFLINE'}\n"
             f"-------------------\n"
-            f"Status: {'🟢 ACTIVE HUNTING' if jito_bal > self.threshold else '🔴 TOP-UP REQUIRED'}"
+            f"Mode: {'🟢 ACTIVE HUNTING' if j_bal > self.threshold else '🔴 STANDBY - REFILL'}"
         )
         try:
-            await tg_bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode="HTML")
+            bot.send_message(ADMIN_ID, msg)
         except Exception as e:
-            logger.error(f"❌ Telegram Send Failed (Check Token/ID): {e}")
+            logger.error(f"Telegram Notification Failed: {e}")
 
-    # 3. THE MAIN ENGINE
-    async def run_hunt(self):
-        # Immediate report on startup to verify fixed connection
+    async def check_rug_security(self, mint_address):
+        """Programmatic RugCheck audit before any trade."""
+        if not RUGCHECK_API_KEY: 
+            return True
+        try:
+            url = f"https://api.rugcheck.xyz/v1/tokens/{mint_address}/report"
+            headers = {"Authorization": f"Bearer {RUGCHECK_API_KEY}"}
+            res = requests.get(url, headers=headers, timeout=5)
+            score = res.json().get('score', 0)
+            if score > 500:
+                logger.warning(f"🚨 SKIP: {mint_address} is too risky (Score: {score})")
+                return False
+            return True
+        except: 
+            return False
+
+    async def run_engine(self):
+        # Immediate confirmation that the bot is alive and 404 is fixed
         await self.send_status_report()
-        iteration = 0
-        
+        cycle = 0
         while True:
             try:
-                # [SCANNING LOGIC]
-                logger.info(f"[SCAN] Cycle {iteration}: Monitoring DEX pools...")
+                # [CORE OPERATION]
+                logger.info(f"[SIP] Cycle {cycle}: Monitoring Solana Mainnet...")
                 
                 # Hourly Balance Heartbeat
-                if iteration % 60 == 0 and iteration != 0:
-                    jito_bal = await self.get_sol_balance(self.jito_keypair.pubkey())
-                    if jito_bal < self.threshold:
-                        await self.send_status_report(is_alert=True)
+                if cycle % 60 == 0 and cycle != 0:
+                    j_bal = await self.get_balance(self.jito_kp.pubkey())
+                    if j_bal < self.threshold: 
+                        await self.send_status_report(alert=True)
                 
-                # Daily Comprehensive Status
-                if iteration % 1440 == 0 and iteration != 0:
+                # Daily Status Report
+                if cycle % 1440 == 0 and cycle != 0: 
                     await self.send_status_report()
 
-                iteration += 1
+                cycle += 1
                 await asyncio.sleep(60) 
             except Exception as e:
-                logger.error(f"Runtime Exception: {e}")
+                logger.error(f"Runtime Loop Error: {e}")
                 await asyncio.sleep(10)
 
 if __name__ == "__main__":
     sip = SIP_Controller()
-    asyncio.run(sip.run_hunt())
+    asyncio.run(sip.run_engine())
