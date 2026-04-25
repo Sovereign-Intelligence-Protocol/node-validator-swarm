@@ -23,13 +23,13 @@ async def get_balance(pubkey):
     try:
         resp = await solana_client.get_balance(pubkey)
         return resp.value / 1_000_000_000
-    except:
+    except Exception as e:
+        logger.error(f"Balance Check Error: {e}")
         return 0.0
 
 def send_sync_report():
-    """Sync wrapper to send the report without loop conflicts."""
+    """Simple wrapper to send report without loop conflicts."""
     try:
-        # Create a temporary loop just for this one-off check
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
@@ -44,7 +44,7 @@ def send_sync_report():
         bot.send_message(ADMIN, msg)
         loop.close()
     except Exception as e:
-        logger.error(f"Report Error: {e}")
+        logger.error(f"Report Failed: {e}")
 
 # --- TELEGRAM COMMANDS ---
 @bot.message_handler(commands=['start', 'status'])
@@ -54,19 +54,19 @@ def handle_commands(message):
 
 # --- MAIN RUNNER ---
 def run_bot_polling():
-    """Runs in a separate thread to listen for your messages."""
+    """Standard polling without extra keyword arguments to avoid TypeErrors."""
     bot.remove_webhook()
-    logger.info("📡 Bot Listener Started...")
-    bot.infinity_polling(non_stop=True, timeout=60)
+    logger.info("📡 Bot Listener Starting...")
+    # Removed 'non_stop=True' to avoid 'multiple values' error seen in logs
+    bot.infinity_polling(timeout=60)
 
 async def main_engine():
-    """Main loop for hunting and automated checks."""
     logger.info("🚀 S.I.P. Engine Starting...")
     
-    # Start the Telegram Listener in the background
+    # Start the Telegram Listener thread
     threading.Thread(target=run_bot_polling, daemon=True).start()
     
-    # Send initial status
+    # Initial status message
     send_sync_report()
 
     cycle = 0
@@ -74,7 +74,6 @@ async def main_engine():
         try:
             if cycle % 60 == 0:
                 logger.info(f"Heartbeat | Cycle {cycle}")
-            
             cycle += 1
             await asyncio.sleep(60)
         except Exception as e:
