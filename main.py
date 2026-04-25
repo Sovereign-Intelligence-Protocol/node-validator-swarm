@@ -1,50 +1,43 @@
 import os
 import asyncio
 import logging
-import telebot
-from solana.rpc.async_api import AsyncClient
+import requests
 from solders.keypair import Keypair
 
-# Minimal Logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SIP_TEST")
+logger = logging.getLogger("SIP_DIAGNOSTIC")
 
 # 1. Grab Variables
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN = os.getenv("TELEGRAM_ADMIN_ID")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+ADMIN = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
 KEY_STR = os.getenv("SOLANA_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
 
-# 2. Immediate Crash Check
-if not TOKEN or not ADMIN:
-    logger.error("❌ CRITICAL: TOKEN or ADMIN_ID is MISSING in Render.")
-    exit(1)
-
-# 3. Initialize Bot WITHOUT management calls
-bot = telebot.TeleBot(TOKEN)
-
-async def test_startup():
-    logger.info("📡 Testing Telegram connection...")
+async def diagnostic_run():
+    logger.info("🕵️ Starting Final Diagnostic...")
+    
+    # TEST 1: Raw Web Request to Telegram
+    # This checks if the token is even alive on Telegram's servers
+    url = f"https://api.telegram.org/bot{TOKEN}/getMe"
     try:
-        # We don't remove webhooks, we don't set commands. 
-        # We just try to send ONE message.
-        bot.send_message(ADMIN, "🤖 S.I.P. Engine: Bare Metal Test Started.")
-        logger.info("✅ Telegram Message Sent Successfully!")
-    except Exception as e:
-        logger.error(f"❌ TELEGRAM FAILED: {e}")
-        # If this fails with 404, the TOKEN is definitely being read incorrectly by Render.
-
-    try:
-        if KEY_STR:
-            kp = Keypair.from_base58_string(KEY_STR)
-            logger.info(f"✅ Wallet Loaded: {kp.pubkey()}")
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            logger.info("✅ TOKEN IS VALID: Telegram recognizes this bot.")
+            # If valid, try to send the message
+            send_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+            payload = {"chat_id": ADMIN, "text": "🚀 Diagnostic Success: The Engine is Primed."}
+            requests.post(send_url, json=payload)
         else:
-            logger.warning("⚠️ No Wallet Key found.")
+            logger.error(f"❌ TOKEN IS INVALID: Telegram returned {response.status_code}. You need a new token from BotFather.")
     except Exception as e:
-        logger.error(f"❌ Wallet Loading Failed: {e}")
+        logger.error(f"❌ Connection Error: {e}")
 
-    logger.info("🚀 Entering Heartbeat Loop...")
+    # TEST 2: Wallet Check (We already know this works based on your logs)
+    if KEY_STR:
+        kp = Keypair.from_base58_string(KEY_STR)
+        logger.info(f"✅ Wallet Active: {kp.pubkey()}")
+
     while True:
         await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    asyncio.run(test_startup())
+    asyncio.run(diagnostic_run())
