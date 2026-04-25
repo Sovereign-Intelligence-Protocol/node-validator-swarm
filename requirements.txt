@@ -1,11 +1,8 @@
-pyTelegramBotAPI
+flask
+psycopg2-binary
+httpx
+base58
 solana
 solders
-redis
-requests
-psycopg2-binary
+pyTelegramBotAPI==4.20.0
 python-dotenv
-flask
-gunicorn
-base58
-websockets
