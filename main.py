@@ -2,7 +2,6 @@ import os
 import asyncio
 import logging
 import telebot
-import threading
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
@@ -12,75 +11,55 @@ ADMIN = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
 SEED_PK = os.getenv("SOLANA_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
-# Setup Logging
+# Simple, reliable logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SIP_Final")
+logger = logging.getLogger("SIP_CORE")
 solana_client = AsyncClient(RPC_URL)
-bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
+bot = telebot.TeleBot(TOKEN)
 
-# --- CORE LOGIC ---
 async def get_balance(pubkey):
     try:
         resp = await solana_client.get_balance(pubkey)
         return resp.value / 1_000_000_000
-    except Exception as e:
-        logger.error(f"Balance Check Error: {e}")
+    except:
         return 0.0
 
-def send_sync_report():
-    """Simple wrapper to send report without loop conflicts."""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        kp = Keypair.from_base58_string(SEED_PK)
-        bal = loop.run_until_complete(get_balance(kp.pubkey()))
-        
-        msg = (
-            f"<b>🚀 S.I.P. ONLINE</b>\n\n"
-            f"💰 <b>Wallet:</b> <code>{bal:.4f} SOL</code>\n"
-            f"🛡️ <b>Status:</b> Active Hunting"
-        )
-        bot.send_message(ADMIN, msg)
-        loop.close()
-    except Exception as e:
-        logger.error(f"Report Failed: {e}")
-
-# --- TELEGRAM COMMANDS ---
-@bot.message_handler(commands=['start', 'status'])
-def handle_commands(message):
-    if str(message.from_user.id) == ADMIN:
-        send_sync_report()
-
-# --- MAIN RUNNER ---
-def run_bot_polling():
-    """The most basic polling call possible to avoid argument conflicts."""
-    try:
-        bot.remove_webhook()
-        logger.info("📡 Bot Listener Starting...")
-        # Stripped of ALL arguments (timeout, non_stop, etc.)
-        bot.infinity_polling()
-    except Exception as e:
-        logger.error(f"Polling Error: {e}")
-
 async def main_engine():
-    logger.info("🚀 S.I.P. Engine Starting...")
+    logger.info("🚀 S.I.P. Engine Starting (Reliability Mode)...")
     
-    # Start the Telegram Listener thread
-    threading.Thread(target=run_bot_polling, daemon=True).start()
-    
-    # Initial status message
-    send_sync_report()
+    try:
+        # Load Wallet
+        kp = Keypair.from_base58_string(SEED_PK)
+        pubkey = kp.pubkey()
+        logger.info(f"✅ Wallet Active: {pubkey}")
+        
+        # Initial Startup Notification
+        bal = await get_balance(pubkey)
+        msg = f"🚀 <b>S.I.P. Engine Online</b>\n\n💰 Balance: <code>{bal:.4f} SOL</code>\n🛡️ Status: Active Hunting"
+        bot.send_message(ADMIN, msg, parse_mode='HTML')
+        logger.info("✅ Startup message sent to Telegram.")
 
+    except Exception as e:
+        logger.error(f"❌ Critical Startup Error: {e}")
+        return
+
+    # MAIN LOOP - No threading, no command polling, just pure execution
     cycle = 0
     while True:
         try:
-            if cycle % 60 == 0:
-                logger.info(f"Heartbeat | Cycle {cycle}")
+            # Check balance/status every 30 minutes
+            if cycle % 30 == 0 and cycle != 0:
+                current_bal = await get_balance(pubkey)
+                bot.send_message(ADMIN, f"📊 <b>Heartbeat Status</b>\n💰 Balance: {current_bal:.4f} SOL", parse_mode='HTML')
+            
+            if cycle % 5 == 0:
+                logger.info(f"Heartbeat Cycle {cycle} | Wallet: {pubkey}")
+
             cycle += 1
-            await asyncio.sleep(60)
+            await asyncio.sleep(60) # 1 minute cycles
+            
         except Exception as e:
-            logger.error(f"Engine Loop Error: {e}")
+            logger.error(f"Loop Error: {e}")
             await asyncio.sleep(10)
 
 if __name__ == "__main__":
