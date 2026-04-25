@@ -5,8 +5,17 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
-      - key: GOOGLE_API_KEY
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TELEGRAM_BOT_TOKEN
         sync: false
-      - key: E2B_API_KEY
+      - key: TELEGRAM_ADMIN_ID
         sync: false
-# Blueprint Update v2
+      - key: SOLANA_PRIVATE_KEY
+        sync: false
+      - key: HELIUS_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK
+        sync: false
+      - key: DATABASE_URL
+        sync: false
