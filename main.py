@@ -7,7 +7,7 @@ from solders.pubkey import Pubkey
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SIP_OMNI_FINAL")
 
-# 2. THE 22-VARIABLE SYNC (MAPPED FROM RENDER)
+# 2. THE 22-VARIABLE SYNC (EVERYTHING DISCOVERED)
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 ADMIN_ID = os.getenv('TELEGRAM_ADMIN_ID')
@@ -43,7 +43,7 @@ except Exception as e:
 bot = telebot.TeleBot(TOKEN, threaded=False)
 solana_client = Client(RPC_BASE or RPC_ALT, commitment="processed")
 
-# 5. COMMANDS
+# 5. COMMANDS (BOT INTERFACE)
 @bot.message_handler(commands=['health'])
 def handle_health(message):
     rpc_status = "❌"
@@ -74,16 +74,16 @@ def handle_revenue(message):
             if conn: db_pool.putconn(conn)
     bot.reply_to(message, f"📊 *Total Revenue:* `{total} SOL` \n🔗 `{MASTER_REF}`", parse_mode='Markdown')
 
-# 6. IGNITION
+# 6. IGNITION (THE AUTOMATIC SELF-HEALING BLOCK)
 if __name__ == "__main__":
     try:
-        # Standard clean boot
-        bot.remove_webhook()
-        bot.get_updates(offset=-1, timeout=1)
+        logger.info("🛠️ Purging Telegram ghost sessions...")
+        # This line kills Error 409 forever by resetting the webhook state
+        bot.delete_webhook(drop_pending_updates=True) 
+        time.sleep(2)
         
         logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
         
-        # Fixed: No duplicate 'non_stop' argument here
         bot.infinity_polling(
             timeout=POLL_TIME, 
             long_polling_timeout=LONG_POLL
