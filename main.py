@@ -7,7 +7,7 @@ from solders.pubkey import Pubkey
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SIP_OMNI_FINAL")
 
-# 2. THE 22-VARIABLE SYNC
+# 2. THE 22-VARIABLE SYNC (MAPPED FROM RENDER)
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 ADMIN_ID = os.getenv('TELEGRAM_ADMIN_ID')
@@ -31,7 +31,7 @@ POLL_TIME = int(os.getenv('BOT_POLL_TIMEOUT', '90'))
 LONG_POLL = int(os.getenv('BOT_LONG_POLL', '40'))
 RETRY_SEC = int(os.getenv('BOT_RETRY_DELAY', '10'))
 
-# 3. INFRASTRUCTURE: DB POOLING
+# 3. DB POOLING
 try:
     db_pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL, sslmode='require')
     logger.info("✅ Database Pool Established.")
@@ -74,20 +74,22 @@ def handle_revenue(message):
             if conn: db_pool.putconn(conn)
     bot.reply_to(message, f"📊 *Total Revenue:* `{total} SOL` \n🔗 `{MASTER_REF}`", parse_mode='Markdown')
 
-# 6. IGNITION
+# 6. IGNITION (WITH COLLISION FIX)
 if __name__ == "__main__":
     try:
+        # AGGRESSIVE RESET: Clears webhooks and wipes any pending update conflicts
+        logger.info("🛠️ Purging Telegram ghost sessions...")
         bot.remove_webhook()
+        time.sleep(2)
         bot.get_updates(offset=-1, timeout=1)
         
         logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
         
-        # This line was the cause of the Status 1 exit. 
-        # Removed non_stop=True to match the telebot infinity_polling internal logic.
         bot.infinity_polling(
             timeout=POLL_TIME, 
             long_polling_timeout=LONG_POLL
         )
     except Exception as e:
         logger.error(f"FATAL: {e}")
-        time.sleep(RETRY_SEC)
+        # Wait double the retry time on conflict to allow old instance to expire
+        time.sleep(RETRY_SEC * 2)
