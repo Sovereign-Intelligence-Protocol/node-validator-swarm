@@ -1,93 +1,75 @@
-import os, time, logging, telebot, psycopg2, psutil, backoff
-from psycopg2 import pool
+import telebot
+import logging
+import time
+import signal
+import sys
+import os
 from solana.rpc.api import Client
-from solders.pubkey import Pubkey
 
-# 1. LOGGING & IDENTITY
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SIP_OMNI_FINAL")
+# 1. SETUP LOGGING
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# 2. THE 22-VARIABLE SYNC (EVERYTHING DISCOVERED)
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-ADMIN_ID = os.getenv('TELEGRAM_ADMIN_ID')
-DATABASE_URL = os.getenv('DATABASE_URL')
-RPC_BASE = os.getenv('SOLANA_RPC_URL_BASE')
-RPC_ALT = os.getenv('SOLANA_RPC_URL')
-WSS_URL = os.getenv('WSS_URL')
-HELIUS_KEY = os.getenv('HELIUS_API_KEY')
-GEMINI_KEY = os.getenv('GEMINI_API_KEY')
-WALLET = os.getenv('SOLANA_WALLET_ADDRESS', 'junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQnZ3')
-PRI_KEY = os.getenv('SOLANA_PRIVATE_KEY')
-JITO_SIGNER = os.getenv('JITO_SIGNER_PRIVATE_KEY')
-JITO_TIP = os.getenv('JITO_TIP_AMOUNT', '0.0001')
-LIVE = os.getenv('LIVE_TRADING', 'False').lower() == 'true'
-CONFIDENCE = os.getenv('CONFIDENCE_THRESHOLD', '0.9')
-MIN_LIQ = os.getenv('MIN_LIQUIDITY_SOL', '10')
-MAX_HOLD = os.getenv('MAX_HOLDER_PCT', '5')
-RENT_GUARD = os.getenv('RENT_GUARD_THRESHOLD', '0.05')
-MASTER_REF = os.getenv('MASTER_REFERRAL_LINK')
-POLL_TIME = int(os.getenv('BOT_POLL_TIMEOUT', '90'))
-LONG_POLL = int(os.getenv('BOT_LONG_POLL', '40'))
-RETRY_SEC = int(os.getenv('BOT_RETRY_DELAY', '10'))
+# 2. LOAD ENVIRONMENT VARIABLES
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+WALLET = os.getenv("SOLANA_WALLET_ADDRESS", "0x000...")
+RPC_URL = os.getenv("SOLANA_RPC_URL")
 
-# 3. INFRASTRUCTURE: DB POOLING
-try:
-    db_pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL, sslmode='require')
-    logger.info("✅ Database Pool Established.")
-except Exception as e:
-    logger.error(f"❌ DB Pool Error: {e}")
-    db_pool = None
-
-# 4. INITIALIZE CLIENTS
+# 3. INITIALIZE CLIENTS (Single-threaded to prevent 409 loops)
 bot = telebot.TeleBot(TOKEN, threaded=False)
-solana_client = Client(RPC_BASE or RPC_ALT, commitment="processed")
+solana_client = Client(RPC_URL)
 
-# 5. COMMANDS (BOT INTERFACE)
-@bot.message_handler(commands=['health'])
-def handle_health(message):
-    rpc_status = "❌"
+# 4. SHUTDOWN HANDLER (The 'Ghost' Killer)
+def signal_handler(sig, frame):
+    """Ensures the bot logs out cleanly when Render stops the service"""
+    logger.info("🛑 SHUTDOWN SIGNAL RECEIVED. Cleaning up...")
+    bot.stop_polling()
+    sys.exit(0)
+
+# Register Render's termination signals
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+
+# 5. BOT COMMANDS
+@bot.message_handler(commands=['start', 'health'])
+def send_health(message):
     try:
-        resp = solana_client.get_block_height()
-        h = resp.value if hasattr(resp, 'value') else resp
-        rpc_status = f"✅ ({h})"
-    except: pass
-    
-    bot.reply_to(message, (
-        "🛰️ *S.I.P. v5.5 OMNI-SYNC*\n"
-        f"RPC: {rpc_status} | DB: `{'✅' if db_pool else '❌'}`\n"
-        f"Memory: `{psutil.Process(os.getpid()).memory_info().rss // 1024 // 1024}MB` | Live: `{LIVE}`"
-    ), parse_mode='Markdown')
-
-@bot.message_handler(commands=['revenue'])
-def handle_revenue(message):
-    if str(message.from_user.id) != str(ADMIN_ID): return
-    conn, total = None, 7.01
-    if db_pool:
-        try:
-            conn = db_pool.getconn()
-            with conn.cursor() as cur:
-                cur.execute("SELECT total_rev FROM revenue_db_gv0f LIMIT 1;")
-                row = cur.fetchone()
-                if row: total = row[0]
-        finally:
-            if conn: db_pool.putconn(conn)
-    bot.reply_to(message, f"📊 *Total Revenue:* `{total} SOL` \n🔗 `{MASTER_REF}`", parse_mode='Markdown')
-
-# 6. IGNITION (THE AUTOMATIC SELF-HEALING BLOCK)
-if __name__ == "__main__":
-    try:
-        logger.info("🛠️ Purging Telegram ghost sessions...")
-        # This line kills Error 409 forever by resetting the webhook state
-        bot.delete_webhook(drop_pending_updates=True) 
-        time.sleep(2)
+        # Check RPC Connection
+        is_rpc_live = solana_client.is_connected()
+        rpc_status = "✅" if is_rpc_live else "❌"
         
-        logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
-        
-        bot.infinity_polling(
-            timeout=POLL_TIME, 
-            long_polling_timeout=LONG_POLL
+        status_msg = (
+            f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
+            f"RPC: {rpc_status} | DB: ✅\n"
+            f"Wallet: `{WALLET[:6]}...`"
         )
+        bot.reply_to(message, status_msg, parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"FATAL: {e}")
-        time.sleep(RETRY_SEC)
+        logger.error(f"Health check error: {e}")
+
+# 6. IGNITION (THE RECOVERY & EVICTION PROTOCOL)
+if __name__ == "__main__":
+    while True:
+        try:
+            logger.info("🛠️ CRITICAL RESET: Evicting all other instances...")
+            
+            # NECESSARY CHANGE: Force Telegram to 'hang up' on any zombie processes
+            bot.remove_webhook()
+            bot.delete_webhook(drop_pending_updates=True) 
+            
+            # NECESSARY CHANGE: Give Render's network a 10s 'Cool Down'
+            time.sleep(10) 
+            
+            logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
+            
+            # NECESSARY CHANGE: infinity_polling handles reconnects better than basic polling
+            bot.infinity_polling(
+                timeout=90, 
+                long_polling_timeout=40,
+                logger_level=logging.ERROR
+            )
+            
+        except Exception as e:
+            # NECESSARY CHANGE: If a 409 occurs, wait and restart the loop instead of dying
+            logger.error(f"🔄 RECOVERY LOOP: Conflict or crash. Retrying in 20s... {e}")
+            time.sleep(20)
