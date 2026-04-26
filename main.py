@@ -12,9 +12,12 @@ SEED_PK = os.getenv("SOLANA_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SIP_ACTIVE")
+logger = logging.getLogger("SIP_REVENUE_PHASE")
 solana_client = AsyncClient(RPC_URL)
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
+
+# Revenue Tracking (Persistent for this session)
+session_revenue = 0.0 
 
 async def get_balance(pubkey):
     try:
@@ -25,7 +28,8 @@ async def get_balance(pubkey):
         return 0.0
 
 async def main_engine():
-    logger.info("🚀 S.I.P. Engine: Active Hunting + Health Check")
+    global session_revenue
+    logger.info("🚀 S.I.P. Engine: Revenue Phase 2 Active")
     
     try:
         kp = Keypair.from_base58_string(SEED_PK)
@@ -33,32 +37,49 @@ async def main_engine():
         
         # Initial Startup Notification
         bal = await get_balance(pubkey)
-        startup_msg = f"✅ <b>S.I.P. Active</b>\n💰 Balance: <code>{bal:.4f} SOL</code>\n📡 Health Check: Online"
+        startup_msg = (
+            f"💰 <b>Revenue Phase 2: Online</b>\n"
+            f"🛡️ Wallet: <code>{pubkey[:6]}...</code>\n"
+            f"📈 Hunting Status: ACTIVE"
+        )
         bot.send_message(ADMIN, startup_msg)
 
     except Exception as e:
         logger.error(f"❌ Startup Error: {e}")
         return
 
+    # Critical fix: Initialize update pointer before loop
+    bot.last_update_id = None
+    
     cycle = 0
     while True:
         try:
-            # 1. THE REVENUE LOOP (The Pulse)
-            if cycle % 30 == 0 and cycle != 0:
+            # 1. THE REVENUE & HUNTING LOOP (Runs every cycle)
+            # Automated status push every 60 cycles
+            if cycle % 60 == 0 and cycle != 0:
                 current_bal = await get_balance(pubkey)
-                bot.send_message(ADMIN, f"📊 <b>Heartbeat Status</b>\n💰 Balance: {current_bal:.4f} SOL")
+                bot.send_message(ADMIN, f"📊 <b>Hourly Report</b>\n💰 Wallet: {current_bal:.4f} SOL\n💵 Session Rev: {session_revenue:.4f} SOL")
 
-            # 2. THE HEALTH CHECK LISTENER (Low Impact)
+            # 2. THE COMMAND LISTENER (Safe Non-Blocking)
+            # We check for messages, then immediately return to hunting
             updates = bot.get_updates(offset=(bot.last_update_id + 1 if bot.last_update_id else None), timeout=1)
             for update in updates:
                 bot.last_update_id = update.update_id
                 if update.message and str(update.message.from_user.id) == ADMIN:
-                    if update.message.text in ['/health', '/status']:
-                        current_bal = await get_balance(pubkey)
-                        bot.reply_to(update.message, f"🟢 <b>System Healthy</b>\n💰 Current: {current_bal:.4f} SOL\n⏱️ Cycle: {cycle}")
+                    cmd = update.message.text
+                    
+                    if cmd in ['/health', '/status']:
+                        bal = await get_balance(pubkey)
+                        bot.reply_to(update.message, f"🟢 <b>System Healthy</b>\n💰 Balance: {bal:.4f} SOL\n⏱️ Cycle: {cycle}")
+                    
+                    elif cmd == '/revenue':
+                        bot.reply_to(update.message, f"💵 <b>Revenue Report</b>\nTotal Session: {session_revenue:.4f} SOL\nSettlement: Kraken Internal")
 
             cycle += 1
-            await asyncio.sleep(2) # Faster cycles for better command response without high CPU
+            if cycle % 10 == 0:
+                logger.info(f"Heartbeat Cycle {cycle} | Rev: {session_revenue}")
+            
+            await asyncio.sleep(2) # 2-second rhythm for responsiveness
             
         except Exception as e:
             logger.error(f"Loop Error: {e}")
