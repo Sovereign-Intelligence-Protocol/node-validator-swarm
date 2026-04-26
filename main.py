@@ -31,7 +31,7 @@ POLL_TIME = int(os.getenv('BOT_POLL_TIMEOUT', '90'))
 LONG_POLL = int(os.getenv('BOT_LONG_POLL', '40'))
 RETRY_SEC = int(os.getenv('BOT_RETRY_DELAY', '10'))
 
-# 3. DB POOLING
+# 3. INFRASTRUCTURE: DB POOLING
 try:
     db_pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL, sslmode='require')
     logger.info("✅ Database Pool Established.")
@@ -74,22 +74,20 @@ def handle_revenue(message):
             if conn: db_pool.putconn(conn)
     bot.reply_to(message, f"📊 *Total Revenue:* `{total} SOL` \n🔗 `{MASTER_REF}`", parse_mode='Markdown')
 
-# 6. IGNITION (WITH COLLISION FIX)
+# 6. IGNITION
 if __name__ == "__main__":
     try:
-        # AGGRESSIVE RESET: Clears webhooks and wipes any pending update conflicts
-        logger.info("🛠️ Purging Telegram ghost sessions...")
+        # Standard clean boot
         bot.remove_webhook()
-        time.sleep(2)
         bot.get_updates(offset=-1, timeout=1)
         
         logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
         
+        # Fixed: No duplicate 'non_stop' argument here
         bot.infinity_polling(
             timeout=POLL_TIME, 
             long_polling_timeout=LONG_POLL
         )
     except Exception as e:
         logger.error(f"FATAL: {e}")
-        # Wait double the retry time on conflict to allow old instance to expire
-        time.sleep(RETRY_SEC * 2)
+        time.sleep(RETRY_SEC)
