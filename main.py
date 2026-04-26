@@ -7,7 +7,7 @@ from solders.pubkey import Pubkey
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SIP_OMNI_FINAL")
 
-# 2. THE 22-VARIABLE SYNC (EVERY SINGLE NAME FROM YOUR LIST)
+# 2. THE 22-VARIABLE SYNC
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 ADMIN_ID = os.getenv('TELEGRAM_ADMIN_ID')
@@ -34,33 +34,35 @@ RETRY_SEC = int(os.getenv('BOT_RETRY_DELAY', '10'))
 # 3. INFRASTRUCTURE: DB POOLING
 try:
     db_pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL, sslmode='require')
-except:
+    logger.info("✅ Database Pool Established.")
+except Exception as e:
+    logger.error(f"❌ DB Pool Error: {e}")
     db_pool = None
 
 # 4. INITIALIZE CLIENTS
 bot = telebot.TeleBot(TOKEN, threaded=False)
 solana_client = Client(RPC_BASE or RPC_ALT, commitment="processed")
 
-# 5. COMMANDS (STAYING ALIVE)
+# 5. COMMANDS
 @bot.message_handler(commands=['health'])
 def handle_health(message):
+    rpc_status = "❌"
     try:
-        mem = psutil.Process(os.getpid()).memory_info().rss // 1024 // 1024
-        h = solana_client.get_block_height().value
-        status = f"✅ ({h})"
-    except:
-        status = "❌"; mem = "???"
+        resp = solana_client.get_block_height()
+        h = resp.value if hasattr(resp, 'value') else resp
+        rpc_status = f"✅ ({h})"
+    except: pass
     
     bot.reply_to(message, (
-        "🛰️ *S.I.P. OMNI-SYNC STATUS*\n"
-        f"RPC: {status} | DB: `{'✅' if db_pool else '❌'}`\n"
-        f"Memory: `{mem}MB` | Live: `{LIVE}`"
+        "🛰️ *S.I.P. v5.5 OMNI-SYNC*\n"
+        f"RPC: {rpc_status} | DB: `{'✅' if db_pool else '❌'}`\n"
+        f"Memory: `{psutil.Process(os.getpid()).memory_info().rss // 1024 // 1024}MB` | Live: `{LIVE}`"
     ), parse_mode='Markdown')
 
 @bot.message_handler(commands=['revenue'])
 def handle_revenue(message):
     if str(message.from_user.id) != str(ADMIN_ID): return
-    total = 7.01
+    conn, total = None, 7.01
     if db_pool:
         try:
             conn = db_pool.getconn()
@@ -68,16 +70,6 @@ def handle_revenue(message):
                 cur.execute("SELECT total_rev FROM revenue_db_gv0f LIMIT 1;")
                 row = cur.fetchone()
                 if row: total = row[0]
-            db_pool.putconn(conn)
-        except: pass
-    bot.reply_to(message, f"📊 *Total Revenue:* `{total} SOL` \n🔗 `{MASTER_REF}`", parse_mode='Markdown')
-
-# 6. IGNITION
-if __name__ == "__main__":
-    try:
-        bot.remove_webhook()
-        bot.get_updates(offset=-1, timeout=1)
-        logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
-        bot.infinity_polling(timeout=POLL_TIME, long_polling_timeout=LONG_POLL, non_stop=True)
-    except Exception as e:
-        time.sleep(RETRY_SEC)
+        finally:
+            if conn: db_pool.putconn(conn)
+    bot.reply_to(message, f
