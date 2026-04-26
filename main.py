@@ -15,15 +15,19 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WALLET = os.getenv("SOLANA_WALLET_ADDRESS", "0x000...")
 RPC_URL = os.getenv("SOLANA_RPC_URL")
 
-# 3. INITIALIZE CLIENTS (Single-threaded to prevent 409 loops)
+# 3. INITIALIZE CLIENTS
+# threaded=False is crucial on Render to prevent duplicate polling threads
 bot = telebot.TeleBot(TOKEN, threaded=False)
 solana_client = Client(RPC_URL)
 
-# 4. SHUTDOWN HANDLER (The 'Ghost' Killer)
+# 4. SHUTDOWN HANDLER
 def signal_handler(sig, frame):
-    """Ensures the bot logs out cleanly when Render stops the service"""
+    """Ensures the bot logs out cleanly when Render stops or restarts the service"""
     logger.info("🛑 SHUTDOWN SIGNAL RECEIVED. Cleaning up...")
-    bot.stop_polling()
+    try:
+        bot.stop_polling()
+    except:
+        pass
     sys.exit(0)
 
 # Register Render's termination signals
@@ -47,29 +51,33 @@ def send_health(message):
     except Exception as e:
         logger.error(f"Health check error: {e}")
 
-# 6. IGNITION (THE RECOVERY & EVICTION PROTOCOL)
+@bot.message_handler(commands=['reset'])
+def force_reset(message):
+    bot.reply_to(message, "🔄 Internal Reset Triggered. Evicting ghosts...")
+    bot.stop_polling()
+
+# 6. IGNITION (REFINED FOR RENDER)
 if __name__ == "__main__":
-    while True:
-        try:
-            logger.info("🛠️ CRITICAL RESET: Evicting all other instances...")
-            
-            # NECESSARY CHANGE: Force Telegram to 'hang up' on any zombie processes
-            bot.remove_webhook()
-            bot.delete_webhook(drop_pending_updates=True) 
-            
-            # NECESSARY CHANGE: Give Render's network a 10s 'Cool Down'
-            time.sleep(10) 
-            
-            logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
-            
-            # NECESSARY CHANGE: infinity_polling handles reconnects better than basic polling
-            bot.infinity_polling(
-                timeout=90, 
-                long_polling_timeout=40,
-                logger_level=logging.ERROR
-            )
-            
-        except Exception as e:
-            # NECESSARY CHANGE: If a 409 occurs, wait and restart the loop instead of dying
-            logger.error(f"🔄 RECOVERY LOOP: Conflict or crash. Retrying in 20s... {e}")
-            time.sleep(20)
+    try:
+        logger.info("🛠️ CRITICAL RESET: Evicting all other instances...")
+        
+        # This tells Telegram to drop the connection from Railway or other ghosts
+        bot.remove_webhook()
+        bot.delete_webhook(drop_pending_updates=True) 
+        
+        # 5-second cooldown to let the API reset
+        time.sleep(5) 
+        
+        logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
+        
+        # Infinity polling handles its own retries—no 'while True' loop needed
+        bot.infinity_polling(
+            timeout=60, 
+            long_polling_timeout=30,
+            logger_level=logging.ERROR
+        )
+        
+    except Exception as e:
+        logger.error(f"💥 FATAL STARTUP ERROR: {e}")
+        # Exit with error code 1 so Render knows to try a fresh restart
+        sys.exit(1)
