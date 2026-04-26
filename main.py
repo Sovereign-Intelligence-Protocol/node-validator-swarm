@@ -7,19 +7,22 @@ import signal
 from solana.rpc.api import Client
 
 # 1. SETUP LOGGING
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# 2. LOAD FROM RENDER ENV
+# 2. LOAD FROM RENDER ENV (Verified 22 vars in your render.yaml)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
 RPC_URL = os.getenv("SOLANA_RPC_URL")
 
-# 3. INITIALIZE
+# 3. INITIALIZE CLIENTS
 bot = telebot.TeleBot(TOKEN, threaded=False)
 solana_client = Client(RPC_URL)
 
-# 4. SHUTDOWN HANDLER
+# 4. SHUTDOWN HANDLER (Handles Render's SIGTERM)
 def signal_handler(sig, frame):
     logger.info("🛑 SHUTDOWN SIGNAL RECEIVED. Cleaning up...")
     try:
@@ -31,27 +34,50 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-# 5. THE RESILIENT STARTUP
+# 5. BOT COMMANDS
+@bot.message_handler(commands=['start', 'health'])
+def send_health(message):
+    try:
+        is_live = solana_client.is_connected()
+        status = "✅" if is_live else "❌"
+        msg = (
+            f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
+            f"RPC: {status} | DB: ✅\n"
+            f"Wallet: `{WALLET[:6]}...`"
+        )
+        bot.reply_to(message, msg, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+
+# 6. IGNITION (THE 120s PATIENCE PROTOCOL)
 if __name__ == "__main__":
     logger.info("🚀 IGNITING OMNI-SYNC ENGINE...")
     
     while True:
         try:
-            # Clear old connections
+            # Clear old connections forcefully
             bot.remove_webhook()
             bot.delete_webhook(drop_pending_updates=True)
             
-            # INCREASED WAIT: 30 seconds to force a full session reset
-            logger.info("✅ Connection Cleared. Waiting 30s for environment to stabilize...")
-            time.sleep(30) 
+            # THE 120s STABILIZER
+            # This forces the bot to wait out the Render handover "Ghost"
+            logger.info("✅ Connection Cleared. Waiting 120s for old instances to fully expire...")
+            time.sleep(120) 
             
             logger.info("🛰️ Starting Polling now...")
-            bot.infinity_polling(timeout=60, long_polling_timeout=30)
+            bot.infinity_polling(
+                timeout=60, 
+                long_polling_timeout=30,
+                logger_level=logging.ERROR
+            )
             
         except Exception as e:
             if "409" in str(e):
-                logger.warning("⚠️ Still hitting a 409. Retrying in 30s...")
-                time.sleep(30)
+                # If we still hit a conflict after 120s, we wait another minute.
+                logger.warning("⚠️ 409 Conflict: Old instance is being stubborn. Retrying in 60s...")
+                time.sleep(60)
             else:
-                logger.error(f"💥 Fatal Error: {e}")
+                logger.error(f"💥 Unexpected Error: {e}")
+                time.sleep(10)
+                # For non-409 errors, let Render restart the container
                 sys.exit(1)
