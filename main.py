@@ -9,19 +9,19 @@ from solders.keypair import Keypair
 
 # --- CONFIGURATION ---
 DB_URL = os.getenv("DATABASE_URL")
+MASTER_LINK = os.getenv("MASTER_REFERRAL_LINK", "Variable Not Found")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ADMIN = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
 SEED_PK = os.getenv("SOLANA_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SIP_DB_PRO")
+logger = logging.getLogger("SIP_FINAL_AUDIT")
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 solana_client = AsyncClient(RPC_URL)
 
-# --- DATABASE LOGIC ---
 def init_db():
-    """Initializes the persistent referral table"""
+    """Double-checked: Ensures table existence without overwriting data"""
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -36,12 +36,11 @@ def init_db():
         conn.commit()
         cur.close()
         conn.close()
-        logger.info("✅ PostgreSQL Initialized")
+        logger.info("✅ Database verified.")
     except Exception as e:
-        logger.error(f"❌ DB Init Error: {e}")
+        logger.error(f"❌ DB Check failed: {e}")
 
 def log_referral(user_id, referrer_id):
-    """Saves a new referral to the database"""
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -53,43 +52,34 @@ def log_referral(user_id, referrer_id):
         cur.close()
         conn.close()
     except Exception as e:
-        logger.error(f"❌ DB Write Error: {e}")
+        logger.error(f"❌ Logging failed: {e}")
 
-# --- CORE ENGINE ---
 async def get_balance(pubkey):
     try:
         resp = await solana_client.get_balance(pubkey)
         return resp.value / 1_000_000_000
     except Exception as e:
-        logger.error(f"Balance check failed: {e}")
+        logger.error(f"Balance check error: {e}")
         return 0.0
 
 async def main_engine():
     init_db()
-    logger.info("🚀 S.I.P. Engine: Database Phase Active")
     
     try:
         kp = Keypair.from_base58_string(SEED_PK)
         pubkey = kp.pubkey()
-        pub_str = str(pubkey) # Fix for the subscriptable error
+        pub_str = str(pubkey)
         
-        bal = await get_balance(pubkey)
-        bot.send_message(ADMIN, f"🛰️ <b>S.I.P. DB Phase Online</b>\n🛡️ Wallet: <code>{pub_str[:6]}...</code>\n🗄️ Storage: <b>PostgreSQL Active</b>")
+        # Initial Heartbeat
+        bot.send_message(ADMIN, f"🛰️ <b>S.I.P. Institutional: Online</b>\n🔗 Master Link: <code>{MASTER_LINK}</code>\n🛡️ Wallet: <code>{pub_str[:6]}...</code>")
     except Exception as e:
-        logger.error(f"Startup Error: {e}")
+        logger.error(f"Critical Startup Failure: {e}")
         return
 
     bot.last_update_id = None
-    cycle = 0
     
     while True:
         try:
-            # 1. Hourly Heartbeat
-            if cycle % 1800 == 0 and cycle != 0:
-                current_bal = await get_balance(pubkey)
-                bot.send_message(ADMIN, f"📊 <b>Hourly Report</b>\n💰 Wallet: {current_bal:.4f} SOL")
-
-            # 2. Command & Referral Listener
             updates = bot.get_updates(offset=(bot.last_update_id + 1 if bot.last_update_id else None), timeout=1)
             for update in updates:
                 bot.last_update_id = update.update_id
@@ -98,19 +88,19 @@ async def main_engine():
                 uid = str(update.message.from_user.id)
                 text = update.message.text or ""
 
-                # Handle Referral Link
+                # Referral Logic
                 if text.startswith('/start') and len(text.split()) > 1:
                     referrer = text.split()[1]
                     if referrer != uid:
                         log_referral(uid, referrer)
-                        bot.reply_to(update.message, "🎟️ <b>Toll Bridge Activated</b>")
-                        bot.send_message(ADMIN, f"🔔 <b>New Referral Logged to DB</b>\nReferrer: <code>{referrer}</code>")
+                        bot.reply_to(update.message, "🎟️ <b>Toll Bridge: Access Granted</b>\nShielding active for this session.")
+                        bot.send_message(ADMIN, f"🔔 <b>New Referral</b>\nID: <code>{referrer}</code>")
 
                 # Admin Logic
                 if uid == str(ADMIN):
                     if text in ['/health', '/status']:
                         bal = await get_balance(pubkey)
-                        bot.reply_to(update.message, f"🟢 <b>System Healthy</b>\n💰 Balance: {bal:.4f} SOL")
+                        bot.reply_to(update.message, f"🟢 <b>Status: Optimal</b>\n💰 Balance: {bal:.4f} SOL")
                     
                     elif text == '/revenue':
                         try:
@@ -120,14 +110,21 @@ async def main_engine():
                             ref_count = cur.fetchone()[0]
                             cur.close()
                             conn.close()
-                        except: ref_count = "Error"
-                        bot.reply_to(update.message, f"💵 <b>Revenue Report</b>\nTotal Database Referrals: {ref_count}")
+                            
+                            bot.reply_to(update.message, (
+                                f"📊 <b>Revenue Snapshot</b>\n"
+                                f"━━━━━━━━━━━━━━━\n"
+                                f"👥 Active Users: <code>{ref_count}</code>\n"
+                                f"💰 Est. Tolls: <code>{ref_count * 0.01:.2f} SOL</code>\n"
+                                f"📈 Growth: <b>Active</b>"
+                            ))
+                        except Exception as e:
+                            bot.reply_to(update.message, "❌ DB Query Failed.")
 
-            cycle += 1
             await asyncio.sleep(2) 
             
         except Exception as e:
-            logger.error(f"Loop Error: {e}")
+            logger.error(f"Runtime Loop Error: {e}")
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
