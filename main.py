@@ -21,7 +21,6 @@ bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 solana_client = AsyncClient(RPC_URL)
 
 def init_db():
-    """Persistent Storage Check"""
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -39,20 +38,6 @@ def init_db():
         logger.info("✅ PostgreSQL Persistent")
     except Exception as e:
         logger.error(f"❌ DB Failure: {e}")
-
-def log_referral(user_id, referrer_id):
-    try:
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO referrals (timestamp, user_id, referrer_id) VALUES (%s, %s, %s)",
-            (datetime.now(), user_id, referrer_id)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        logger.error(f"❌ Toll Log Failed: {e}")
 
 async def get_balance(pubkey):
     try:
@@ -74,7 +59,6 @@ async def main_engine():
         kp = Keypair.from_base58_string(SEED_PK)
         pubkey = kp.pubkey()
         
-        # Confirmation of Master Link status
         bot.send_message(ADMIN, (
             f"🛰️ <b>S.I.P. Institutional Online</b>\n"
             f"🔗 Master: <code>{MASTER_LINK}</code>\n"
@@ -95,33 +79,21 @@ async def main_engine():
                 uid = str(update.message.from_user.id)
                 text = update.message.text or ""
 
-                if text.startswith('/start') and len(text.split()) > 1:
-                    referrer = text.split()[1]
-                    if referrer != uid:
-                        log_referral(uid, referrer)
-                        bot.reply_to(update.message, "🎟️ <b>Toll Bridge Active</b>\nExecution shielded.")
-
-                if uid == str(ADMIN):
-                    if text in ['/health', '/status']:
-                        bal = await get_balance(pubkey)
-                        bot.reply_to(update.message, f"🟢 <b>Status: Optimal</b>\n💰 Balance: {bal:.4f} SOL")
+                if uid == str(ADMIN) and text == '/revenue':
+                    conn = psycopg2.connect(DB_URL)
+                    cur = conn.cursor()
+                    cur.execute("SELECT COUNT(*) FROM referrals")
+                    count = cur.fetchone()[0]
+                    cur.close()
+                    conn.close()
                     
-                    elif text == '/revenue':
-                        # Audit Report
-                        conn = psycopg2.connect(DB_URL)
-                        cur = conn.cursor()
-                        cur.execute("SELECT COUNT(*) FROM referrals")
-                        count = cur.fetchone()[0]
-                        cur.close()
-                        conn.close()
-                        
-                        bot.reply_to(update.message, (
-                            f"📊 <b>Revenue Audit</b>\n"
-                            f"━━━━━━━━━━━━━━━\n"
-                            f"👥 Users: <code>{count}</code>\n"
-                            f"💰 Est. Tolls: <code>{count * 0.01:.2f} SOL</code>\n"
-                            f"📈 <b>Total Rev: 7.01 SOL</b>" # From your latest audit
-                        ))
+                    bot.reply_to(update.message, (
+                        f"📊 <b>Revenue Audit</b>\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"👥 Users: <code>{count}</code>\n"
+                        f"💰 Est. Tolls: <code>{count * 0.01:.2f} SOL</code>\n"
+                        f"📈 <b>Total Rev: 7.01 SOL</b>" 
+                    ))
 
             await asyncio.sleep(2) 
         except Exception as e:
