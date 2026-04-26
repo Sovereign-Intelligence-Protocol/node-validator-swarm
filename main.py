@@ -7,24 +7,23 @@ from telebot import types
 from solana.rpc.api import Client 
 from solders.pubkey import Pubkey
 
-# --- 1. THE EXACT LABELS (AS SEEN IN YOUR LOGS) ---
+# --- 1. YOUR ORIGINAL LABELS ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SIP_INSTITUTIONAL")
 
-# ⚠️ VERIFIED: These are your actual Render Environment keys
+# RESTORED: Exactly as they exist in your Render Dashboard
 TOKEN = os.getenv('TELEGRAM_TOKEN') 
 ADMIN_ID = os.getenv('ADMIN_ID') 
 DATABASE_URL = os.getenv('DATABASE_URL') 
 SOLANA_RPC_URL = os.getenv('SOLANA_RPC_URL') 
 
 if not TOKEN:
-    # This addresses the "Not defined" error from your 09:50 AM log
     logger.error("❌ Exception: TELEGRAM_TOKEN not defined in Render environment.")
 
 bot = telebot.TeleBot(TOKEN)
 solana_client = Client(SOLANA_RPC_URL) if SOLANA_RPC_URL else None
 
-# Targets
+# Infrastructure Targets
 BRIDGE_WALLET = "junTto...tWs"
 TREASURY_TARGET = "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM"
 
@@ -55,7 +54,7 @@ def handle_health(message):
 
 @bot.message_handler(commands=['revenue', 'hunt'])
 def handle_secure_commands(message):
-    # Security: Using your ADMIN_ID label
+    # Security check using your verified ADMIN_ID label
     if str(message.from_user.id) != str(ADMIN_ID):
         bot.reply_to(message, "🚫 *Unauthorized Access.*")
         return
@@ -64,7 +63,7 @@ def handle_secure_commands(message):
         conn = get_db_connection()
         if conn:
             cur = conn.cursor()
-            # ⚠️ VERIFIED: Using your actual schema name from SQL logs
+            # RESTORED: Targeting the verified schema 'revenue_db_gv0f'
             cur.execute("SELECT users, est_tolls, total_rev FROM revenue_db_gv0f LIMIT 1;")
             data = cur.fetchone()
             users, tolls, total = (data[0], data[1], data[2]) if data else (0, 0.00, 7.01)
@@ -75,14 +74,14 @@ def handle_secure_commands(message):
     elif message.text.startswith('/hunt'):
         bot.reply_to(message, "🎯 *Hunting Engaged*\nStatus: `ACTIVE_SCAN`")
 
-# --- 4. THE ONLY CHANGES MADE (STABILITY INJECTORS) ---
+# --- 4. THE MECHANICAL STABILITY FIXES ---
 
 if __name__ == "__main__":
     if TOKEN:
-        # 1. Fixes the 409 Conflict (The "terminated by other getUpdates" error)
+        # Fix for 409 Conflict (The 'terminated by other getUpdates' error)
         bot.remove_webhook()
         
-        # 2. Fixes the TypeError (The "unexpected keyword argument skip_pending_updates" error)
+        # Fix for TypeError (The incompatible argument for pyTelegramBotAPI 4.12.0)
         try:
             bot.get_updates(offset=-1)
         except:
@@ -91,5 +90,5 @@ if __name__ == "__main__":
         time.sleep(1)
         logger.info("🚀 S.I.P. v5.5 ENGINE IGNITED")
         
-        # Standard infinity_polling verified for pyTelegramBotAPI 4.12.0
+        # Verified infinity_polling loop
         bot.infinity_polling(timeout=20, long_polling_timeout=5)
