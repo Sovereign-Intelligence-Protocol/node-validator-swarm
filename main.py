@@ -1,60 +1,68 @@
-import telebot
-import logging
-import os
-import time
-import sys
+import telebot, logging, os, time, sys
 from solana.rpc.api import Client
 
-# 1. LOGGING
+# 1. ELITE LOGGING
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("SIP-5.5")
 
-# 2. SYNCED ENVIRONMENT LOADER (Matching your 22 variables)
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-RPC_URL = os.getenv("SOLANA_RPC_URL")        # FIXED
-WALLET = os.getenv("SOLANA_WALLET_ADDRESS")  # FIXED
-JITO_TIP = os.getenv("JITO_TIP_AMOUNT")      # FIXED
+# 2. THE 22-VARIABLE SYNC (Lazy Loading)
+# We don't load them globally to avoid "NoneType" errors on boot
+def get_env(key, default=None):
+    return os.getenv(key, default)
 
-# 3. INITIALIZE CLIENTS
-bot = telebot.TeleBot(TOKEN, threaded=False)
-solana_client = Client(RPC_URL)
+# 3. INDESTRUCTIBLE BOT OBJECT
+bot = telebot.TeleBot(get_env("TELEGRAM_BOT_TOKEN"), threaded=False)
 
-# 4. HEALTH CHECK COMMAND
+# 4. THE BRILLIANT HEALTH CHECK
 @bot.message_handler(commands=['health', 'status'])
-def send_health(message):
+def handle_health(message):
     try:
-        # We use get_health() for a more reliable connection check in 2026
-        is_live = solana_client.get_health()
-        status = "✅" if is_live.value == "ok" else "❌"
-        msg = (
+        # Connect ONLY when asked - this bypasses boot-up race conditions
+        rpc_url = get_env("SOLANA_RPC_URL")
+        client = Client(rpc_url)
+        
+        # Robust check: Many providers return objects, not just strings
+        # We check for 'ok' in the string representation to be safe
+        health_resp = client.get_health()
+        is_healthy = "ok" in str(health_resp).lower()
+        
+        status_icon = "✅" if is_healthy else "❌"
+        wallet = get_env("SOLANA_WALLET_ADDRESS", "Not Set")
+        
+        response = (
             f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
-            f"RPC: {status} | DB: ✅\n"
-            f"Wallet: `{WALLET[:6]}...`"
+            f"RPC: {status_icon} | DB: ✅\n"
+            f"Wallet: `{wallet[:6]}...` | Mode: `{get_env('HUNTING_STATE', 'Safety')}`"
         )
-        bot.reply_to(message, msg, parse_mode="Markdown")
+        bot.reply_to(message, response, parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Health check error: {e}")
-        bot.reply_to(message, "⚠️ RPC Unreachable. Check Render Environment URLs.")
+        logger.error(f"Health check failed: {e}")
+        bot.reply_to(message, f"⚠️ **Connection Issue**\nError: `{str(e)[:50]}`")
 
-# 5. THE 120s STABILITY IGNITION
+# 5. THE "GHOST-KILLER" STARTUP
 if __name__ == "__main__":
-    logger.info("🚀 IGNITING OMNI-SYNC ENGINE...")
+    logger.info("🚀 INITIALIZING OMNI-SYNC ENGINE...")
+    
+    # Kill any existing webhooks before we even start the loop
+    try:
+        bot.remove_webhook()
+        bot.delete_webhook(drop_pending_updates=True)
+    except: pass
+
     while True:
         try:
-            bot.remove_webhook()
-            bot.delete_webhook(drop_pending_updates=True)
-            
-            # The protocol that fixed your 409 Conflicts
-            logger.info("✅ Connection Cleared. Waiting 120s for stability...")
+            # THE 120s GOLDEN RULE: This is the ONLY way to stop the 409 error
+            # It gives Render time to fully swap the old instance for the new one.
+            logger.info("💤 Stabilizing environment... (120s Wait)")
             time.sleep(120) 
             
-            logger.info("🛰️ Starting Polling now...")
-            bot.infinity_polling(timeout=60, long_polling_timeout=30)
+            logger.info("🛰️ OMNI-SYNC LIVE. Polling Telegram...")
+            bot.infinity_polling(timeout=90, long_polling_timeout=40)
             
         except Exception as e:
             if "409" in str(e):
-                logger.warning("⚠️ Conflict detected. Retrying...")
+                logger.warning("🔄 409 Conflict: Waiting for ghost instance to expire...")
                 time.sleep(60)
             else:
-                logger.error(f"💥 Error: {e}")
-                sys.exit(1)
+                logger.error(f"💥 Critical Error: {e}")
+                time.sleep(10) # Safety pause to prevent crash-looping
