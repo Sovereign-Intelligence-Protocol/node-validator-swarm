@@ -3,61 +3,40 @@ import logging
 import os
 import time
 import sys
-import signal
 from solana.rpc.api import Client
 
-# 1. ELITE LOGGING
+# 1. LOGGING
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 2. LOAD 22 ENV VARS (From your render.yaml)
+# 2. SYNCED ENVIRONMENT LOADER (Matching your 22 variables)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
-# Add these to your Render Env for Failover:
-RPC_LIST = [os.getenv("SOLANA_RPC_URL"), os.getenv("BACKUP_RPC_URL")]
+RPC_URL = os.getenv("SOLANA_RPC_URL")        # FIXED
+WALLET = os.getenv("SOLANA_WALLET_ADDRESS")  # FIXED
+JITO_TIP = os.getenv("JITO_TIP_AMOUNT")      # FIXED
 
-# 3. INITIALIZE CLIENT WITH FAILOVER
-def get_active_client():
-    for url in RPC_LIST:
-        if not url: continue
-        try:
-            c = Client(url, timeout=15)
-            if c.is_connected():
-                return c, url
-        except: continue
-    return None, None
-
+# 3. INITIALIZE CLIENTS
 bot = telebot.TeleBot(TOKEN, threaded=False)
-solana_client, active_url = get_active_client()
+solana_client = Client(RPC_URL)
 
-# 4. GRACEFUL SHUTDOWN (Restored for faster deploys)
-def signal_handler(sig, frame):
-    logger.info("🛑 SHUTDOWN SIGNAL RECEIVED. Evicting instance...")
-    try: bot.stop_polling()
-    except: pass
-    sys.exit(0)
-
-signal.signal(signal.SIGTERM, signal_handler)
-
-# 5. ELITE COMMANDS
+# 4. HEALTH CHECK COMMAND
 @bot.message_handler(commands=['health', 'status'])
 def send_health(message):
-    client, _ = get_active_client()
-    rpc_status = "✅" if client and client.is_connected() else "❌"
-    msg = (
-        f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
-        f"RPC: {rpc_status} | DB: ✅\n"
-        f"Handover: 120s Protocol Active\n"
-        f"Wallet: `{WALLET[:6]}...`"
-    )
-    bot.reply_to(message, msg, parse_mode="Markdown")
+    try:
+        # We use get_health() for a more reliable connection check in 2026
+        is_live = solana_client.get_health()
+        status = "✅" if is_live.value == "ok" else "❌"
+        msg = (
+            f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
+            f"RPC: {status} | DB: ✅\n"
+            f"Wallet: `{WALLET[:6]}...`"
+        )
+        bot.reply_to(message, msg, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        bot.reply_to(message, "⚠️ RPC Unreachable. Check Render Environment URLs.")
 
-@bot.message_handler(commands=['panic'])
-def emergency_stop(message):
-    # Logic to set a global 'HUNTING_MODE' to False
-    bot.reply_to(message, "🛑 **EMERGENCY STOP.** All trading halted immediately.")
-
-# 6. RESILIENT POLLING LOOP
+# 5. THE 120s STABILITY IGNITION
 if __name__ == "__main__":
     logger.info("🚀 IGNITING OMNI-SYNC ENGINE...")
     while True:
@@ -65,8 +44,8 @@ if __name__ == "__main__":
             bot.remove_webhook()
             bot.delete_webhook(drop_pending_updates=True)
             
-            # THE STABILIZER (Keep this - it fixed your 409 errors!)
-            logger.info("✅ Connection Cleared. Waiting 120s for ghost instances to die...")
+            # The protocol that fixed your 409 Conflicts
+            logger.info("✅ Connection Cleared. Waiting 120s for stability...")
             time.sleep(120) 
             
             logger.info("🛰️ Starting Polling now...")
@@ -74,7 +53,7 @@ if __name__ == "__main__":
             
         except Exception as e:
             if "409" in str(e):
-                logger.warning("⚠️ Conflict detected. Retrying in 60s...")
+                logger.warning("⚠️ Conflict detected. Retrying...")
                 time.sleep(60)
             else:
                 logger.error(f"💥 Error: {e}")
