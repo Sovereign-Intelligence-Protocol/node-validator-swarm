@@ -2,8 +2,11 @@ services:
   - type: worker
     name: lead-scalper-bot
     runtime: python
+    buildWith: starter
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    # ADD THIS LINE: It prevents Render from spinning up a 'twin'
+    numInstances: 1 
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
