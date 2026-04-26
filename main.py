@@ -1,83 +1,58 @@
 import telebot
 import logging
-import time
-import signal
-import sys
 import os
+import time
+import sys
 from solana.rpc.api import Client
 
-# 1. SETUP LOGGING
+# 1. LOGGING SETUP (Clean and professional)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 2. LOAD ENVIRONMENT VARIABLES
+# 2. LOAD EVERYTHING FROM RENDER 
+# (Identity, RPC, and the 22 Custom Settings)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WALLET = os.getenv("SOLANA_WALLET_ADDRESS", "0x000...")
+WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
 RPC_URL = os.getenv("SOLANA_RPC_URL")
 
-# 3. INITIALIZE CLIENTS
-# threaded=False is crucial on Render to prevent duplicate polling threads
+# 3. INITIALIZATION
 bot = telebot.TeleBot(TOKEN, threaded=False)
 solana_client = Client(RPC_URL)
 
-# 4. SHUTDOWN HANDLER
-def signal_handler(sig, frame):
-    """Ensures the bot logs out cleanly when Render stops or restarts the service"""
-    logger.info("🛑 SHUTDOWN SIGNAL RECEIVED. Cleaning up...")
+# 4. UNIVERSAL HEALTH CHECK (Confirms settings are loaded)
+@bot.message_handler(commands=['health'])
+def health_check(message):
     try:
-        bot.stop_polling()
-    except:
-        pass
-    sys.exit(0)
-
-# Register Render's termination signals
-signal.signal(signal.SIGTERM, signal_handler)
-signal.signal(signal.SIGINT, signal_handler)
-
-# 5. BOT COMMANDS
-@bot.message_handler(commands=['start', 'health'])
-def send_health(message):
-    try:
-        # Check RPC Connection
-        is_rpc_live = solana_client.is_connected()
-        rpc_status = "✅" if is_rpc_live else "❌"
+        is_live = solana_client.is_connected()
+        status = "✅" if is_live else "❌"
+        # We can pull any of your 22 settings here just to verify they're active
+        jito_engine = os.getenv("JITO_BLOCK_ENGINE_URL", "Not Set")
         
-        status_msg = (
+        msg = (
             f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
-            f"RPC: {rpc_status} | DB: ✅\n"
-            f"Wallet: `{WALLET[:6]}...`"
+            f"RPC: {status} | DB: ✅\n"
+            f"Wallet: `{WALLET[:6]}...`\n"
+            f"Jito Engine: `{jito_engine[:15]}...`"
         )
-        bot.reply_to(message, status_msg, parse_mode="Markdown")
+        bot.reply_to(message, msg, parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Health check error: {e}")
+        logger.error(f"Health check fail: {e}")
 
-@bot.message_handler(commands=['reset'])
-def force_reset(message):
-    bot.reply_to(message, "🔄 Internal Reset Triggered. Evicting ghosts...")
-    bot.stop_polling()
-
-# 6. IGNITION (REFINED FOR RENDER)
+# 5. THE STARTUP (Ghost-Proof & Effortless)
 if __name__ == "__main__":
+    logger.info("🚀 IGNITING OMNI-SYNC ENGINE...")
+    
+    # Kills any Railway/Zombie webhooks immediately
+    bot.remove_webhook()
+    bot.delete_webhook(drop_pending_updates=True)
+    
+    # 5-second breath for the Telegram API to clear
+    time.sleep(5)
+    
     try:
-        logger.info("🛠️ CRITICAL RESET: Evicting all other instances...")
-        
-        # This tells Telegram to drop the connection from Railway or other ghosts
-        bot.remove_webhook()
-        bot.delete_webhook(drop_pending_updates=True) 
-        
-        # 5-second cooldown to let the API reset
-        time.sleep(5) 
-        
-        logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
-        
-        # Infinity polling handles its own retries—no 'while True' loop needed
-        bot.infinity_polling(
-            timeout=60, 
-            long_polling_timeout=30,
-            logger_level=logging.ERROR
-        )
-        
+        # infinity_polling handles its own retries. 
+        # If a 409 Conflict occurs, the script exits so Render can do a fresh restart.
+        bot.infinity_polling(timeout=60, long_polling_timeout=30)
     except Exception as e:
-        logger.error(f"💥 FATAL STARTUP ERROR: {e}")
-        # Exit with error code 1 so Render knows to try a fresh restart
+        logger.error(f"Render Restart Triggered: {e}")
         sys.exit(1)
