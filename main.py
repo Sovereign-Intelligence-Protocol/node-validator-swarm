@@ -1,46 +1,61 @@
 import os
 import asyncio
 import logging
-import csv
+import psycopg2
 import telebot
 from datetime import datetime
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
-# --- RENDER PERSISTENT STORAGE CONFIG ---
-# Change '/var/data' to whatever your 'Mount Path' is in the Render Disks tab
-DATA_DIR = "/var/data" 
-REF_FILE = os.path.join(DATA_DIR, "referrals.csv")
-
-# Ensure the directory exists (prevents crashes if disk isn't mounted)
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-# --- STANDARD CONFIGURATION ---
+# --- CONFIGURATION ---
+DB_URL = os.getenv("DATABASE_URL")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ADMIN = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
 SEED_PK = os.getenv("SOLANA_PRIVATE_KEY") or os.getenv("PRIVATE_KEY")
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SIP_PHASE_3_PERSISTENT")
+logger = logging.getLogger("SIP_DB_PRO")
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 solana_client = AsyncClient(RPC_URL)
 
-session_revenue = 0.0
+# --- DATABASE LOGIC ---
+def init_db():
+    """Initializes the persistent referral table"""
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS referrals (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP NOT NULL,
+                user_id TEXT NOT NULL,
+                referrer_id TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info("✅ PostgreSQL Initialized")
+    except Exception as e:
+        logger.error(f"❌ DB Init Error: {e}")
 
 def log_referral(user_id, referrer_id):
-    """Saves referral data to the PERSISTENT DISK"""
-    file_exists = os.path.isfile(REF_FILE)
+    """Saves a new referral to the database"""
     try:
-        with open(REF_FILE, mode='a', newline='') as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(['Timestamp', 'New_User', 'Referrer'])
-            writer.writerow([datetime.now(), user_id, referrer_id])
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO referrals (timestamp, user_id, referrer_id) VALUES (%s, %s, %s)",
+            (datetime.now(), user_id, referrer_id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
     except Exception as e:
-        logger.error(f"Failed to write to disk: {e}")
+        logger.error(f"❌ DB Write Error: {e}")
 
+# --- CORE ENGINE ---
 async def get_balance(pubkey):
     try:
         resp = await solana_client.get_balance(pubkey)
@@ -50,16 +65,16 @@ async def get_balance(pubkey):
         return 0.0
 
 async def main_engine():
-    global session_revenue
-    logger.info(f"🚀 S.I.P. Persistent Mode: Writing to {REF_FILE}")
+    init_db()
+    logger.info("🚀 S.I.P. Engine: Database Phase Active")
     
     try:
         kp = Keypair.from_base58_string(SEED_PK)
         pubkey = kp.pubkey()
-        pub_str = str(pubkey)
+        pub_str = str(pubkey) # Fix for the subscriptable error
         
         bal = await get_balance(pubkey)
-        bot.send_message(ADMIN, f"🛰️ <b>Phase 3+ (Storage Active)</b>\n🛡️ Wallet: <code>{pub_str[:6]}...</code>\n📂 Disk Path: <code>{DATA_DIR}</code>")
+        bot.send_message(ADMIN, f"🛰️ <b>S.I.P. DB Phase Online</b>\n🛡️ Wallet: <code>{pub_str[:6]}...</code>\n🗄️ Storage: <b>PostgreSQL Active</b>")
     except Exception as e:
         logger.error(f"Startup Error: {e}")
         return
@@ -69,10 +84,12 @@ async def main_engine():
     
     while True:
         try:
+            # 1. Hourly Heartbeat
             if cycle % 1800 == 0 and cycle != 0:
                 current_bal = await get_balance(pubkey)
                 bot.send_message(ADMIN, f"📊 <b>Hourly Report</b>\n💰 Wallet: {current_bal:.4f} SOL")
 
+            # 2. Command & Referral Listener
             updates = bot.get_updates(offset=(bot.last_update_id + 1 if bot.last_update_id else None), timeout=1)
             for update in updates:
                 bot.last_update_id = update.update_id
@@ -81,13 +98,15 @@ async def main_engine():
                 uid = str(update.message.from_user.id)
                 text = update.message.text or ""
 
+                # Handle Referral Link
                 if text.startswith('/start') and len(text.split()) > 1:
                     referrer = text.split()[1]
                     if referrer != uid:
                         log_referral(uid, referrer)
                         bot.reply_to(update.message, "🎟️ <b>Toll Bridge Activated</b>")
-                        bot.send_message(ADMIN, f"🔔 <b>New Referral Saved to Disk</b>\nReferrer: <code>{referrer}</code>")
+                        bot.send_message(ADMIN, f"🔔 <b>New Referral Logged to DB</b>\nReferrer: <code>{referrer}</code>")
 
+                # Admin Logic
                 if uid == str(ADMIN):
                     if text in ['/health', '/status']:
                         bal = await get_balance(pubkey)
@@ -95,10 +114,14 @@ async def main_engine():
                     
                     elif text == '/revenue':
                         try:
-                            with open(REF_FILE, 'r') as f:
-                                ref_count = sum(1 for line in f) - 1
-                        except: ref_count = 0
-                        bot.reply_to(update.message, f"💵 <b>Revenue Report</b>\nTotal Referrals (Saved): {ref_count}")
+                            conn = psycopg2.connect(DB_URL)
+                            cur = conn.cursor()
+                            cur.execute("SELECT COUNT(*) FROM referrals")
+                            ref_count = cur.fetchone()[0]
+                            cur.close()
+                            conn.close()
+                        except: ref_count = "Error"
+                        bot.reply_to(update.message, f"💵 <b>Revenue Report</b>\nTotal Database Referrals: {ref_count}")
 
             cycle += 1
             await asyncio.sleep(2) 
