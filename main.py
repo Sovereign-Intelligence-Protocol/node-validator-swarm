@@ -7,15 +7,10 @@ import signal
 from solana.rpc.api import Client
 
 # 1. SETUP LOGGING
-# High-visibility logging to track the 120s timer in Render Live Tail
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 2. LOAD FROM RENDER ENV
-# These match the keys verified in your render.yaml
+# 2. LOAD FROM RENDER ENV (Utilizing the 22 variables from your yaml)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
 RPC_URL = os.getenv("SOLANA_RPC_URL")
@@ -24,8 +19,7 @@ RPC_URL = os.getenv("SOLANA_RPC_URL")
 bot = telebot.TeleBot(TOKEN, threaded=False)
 solana_client = Client(RPC_URL)
 
-# 4. SHUTDOWN HANDLER
-# Ensures the bot stops polling gracefully when Render rotates instances
+# 4. SHUTDOWN HANDLER (Speeds up future deploys)
 def signal_handler(sig, frame):
     logger.info("🛑 SHUTDOWN SIGNAL RECEIVED. Cleaning up...")
     try:
@@ -37,8 +31,7 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-# 5. BOT COMMANDS
-# Re-adding the status check so you can verify the connection via Telegram
+# 5. RESTORED COMMANDS
 @bot.message_handler(commands=['start', 'health'])
 def send_health(message):
     try:
@@ -53,35 +46,26 @@ def send_health(message):
     except Exception as e:
         logger.error(f"Health check error: {e}")
 
-# 6. IGNITION (THE 120s PATIENCE PROTOCOL)
-# This handles the 409 Conflict seen in your logs by out-waiting the old instance
+# 6. THE STABLE IGNITION (120s Delay Kept)
 if __name__ == "__main__":
     logger.info("🚀 IGNITING OMNI-SYNC ENGINE...")
     
     while True:
         try:
-            # Forcefully clear any lingering webhooks or sessions
             bot.remove_webhook()
             bot.delete_webhook(drop_pending_updates=True)
             
-            # THE 120s STABILIZER
-            # Essential to prevent the 409 error during Render handovers
-            logger.info("✅ Connection Cleared. Waiting 120s for old instances to fully expire...")
+            # This is what fixed your 409 errors - keep this!
+            logger.info("✅ Connection Cleared. Waiting 120s for environment to stabilize...")
             time.sleep(120) 
             
             logger.info("🛰️ Starting Polling now...")
-            bot.infinity_polling(
-                timeout=60, 
-                long_polling_timeout=30,
-                logger_level=logging.ERROR
-            )
+            bot.infinity_polling(timeout=60, long_polling_timeout=30)
             
         except Exception as e:
             if "409" in str(e):
-                # Back-off logic if Render is still holding the old instance
-                logger.warning("⚠️ 409 Conflict: Old instance still active. Retrying in 60s...")
+                logger.warning("⚠️ 409 Conflict: Retrying in 60s...")
                 time.sleep(60)
             else:
-                logger.error(f"💥 Unexpected Error: {e}")
-                time.sleep(10)
+                logger.error(f"💥 Fatal Error: {e}")
                 sys.exit(1)
