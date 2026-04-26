@@ -72,4 +72,22 @@ def handle_revenue(message):
                 if row: total = row[0]
         finally:
             if conn: db_pool.putconn(conn)
-    bot.reply_to(message, f
+    bot.reply_to(message, f"📊 *Total Revenue:* `{total} SOL` \n🔗 `{MASTER_REF}`", parse_mode='Markdown')
+
+# 6. IGNITION
+if __name__ == "__main__":
+    try:
+        bot.remove_webhook()
+        bot.get_updates(offset=-1, timeout=1)
+        
+        logger.info(f"🚀 S.I.P. v5.5 IGNITED | WALLET: {WALLET[:6]}")
+        
+        # This line was the cause of the Status 1 exit. 
+        # Removed non_stop=True to match the telebot infinity_polling internal logic.
+        bot.infinity_polling(
+            timeout=POLL_TIME, 
+            long_polling_timeout=LONG_POLL
+        )
+    except Exception as e:
+        logger.error(f"FATAL: {e}")
+        time.sleep(RETRY_SEC)
