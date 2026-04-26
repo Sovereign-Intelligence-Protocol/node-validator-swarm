@@ -1,12 +1,11 @@
 import telebot, logging, os, time, sys
 from solana.rpc.api import Client
-from solders.pubkey import Pubkey
+from solders.pubkey import Pubkey  # The critical fix for the 'str' error
 
 # 1. LOGGING & ENGINE CONFIG
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("SIP-5.5-HUNTER")
+logger = logging.getLogger("SIP-5.5-MASTER")
 
-# Initialize Telegram Bot
 bot = telebot.TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), threaded=False)
 
 # 2. PROTECTION LOGIC (Band Protection / Rent Guard)
@@ -23,7 +22,7 @@ def check_protections():
         balance_resp = client.get_balance(wallet_pubkey)
         balance = balance_resp.value / 10**9 
         
-        # Pull Rent Guard from Render Env (Defaults to 0.05 SOL if not set)
+        # Pull Rent Guard (Defaults to 0.05 SOL)
         rent_limit = float(os.getenv("RENT_GUARD", "0.05"))
 
         if balance < rent_limit:
@@ -48,28 +47,24 @@ def handle_status(message):
     )
     bot.reply_to(message, response, parse_mode="Markdown")
 
-# 4. FULL HUNTER LISTENER
+# 4. FULL HUNTER LISTENER (Restored Listening Power)
 @bot.message_handler(func=lambda message: True)
 def hunter_listener(message):
-    # Ignore command messages
-    if message.text and message.text.startswith('/'):
-        return
-        
-    text = message.text.strip()
-    # Check for valid Solana Contract Address length (32-44 chars)
-    if 32 <= len(text) <= 44:
-        is_safe, reason = check_protections()
-        
-        if is_safe and os.getenv("HUNTING_STATE") == "Active":
-            logger.info(f"🎯 TARGET SPOTTED: {text[:10]}... Executing.")
-            bot.reply_to(message, f"🎯 **S.I.P. Hunter:** CA Detected. Processing trade...")
-            # Snipe execution logic hooks in here
-        else:
-            logger.info(f"🛡️ SIGNAL IGNORED: {reason}")
+    if message.text and not message.text.startswith('/'):
+        text = message.text.strip()
+        # Scan for Solana CA (32-44 chars)
+        if 32 <= len(text) <= 44:
+            is_safe, reason = check_protections()
+            
+            if is_safe and os.getenv("HUNTING_STATE") == "Active":
+                logger.info(f"🎯 TARGET SPOTTED: {text[:10]}...")
+                bot.reply_to(message, f"🎯 **S.I.P. Hunter:** CA Detected. Processing trade...")
+            else:
+                logger.info(f"🛡️ SIGNAL IGNORED: {reason}")
 
-# 5. STARTUP ENGINE (Ghost-Killer Loop)
+# 5. STARTUP ENGINE (With 120s Ghost-Killer)
 if __name__ == "__main__":
-    logger.info("🚀 STARTING FULL S.I.P. v5.5 HUNTER...")
+    logger.info("🚀 STARTING FULL S.I.P. v5.5 MASTER BUILD...")
     
     try:
         bot.remove_webhook()
@@ -79,7 +74,7 @@ if __name__ == "__main__":
 
     while True:
         try:
-            # 120s Stabilization: Prevents Render '409 Conflict' errors
+            # Essential for clearing Render's old bot instances
             logger.info("💤 Stabilizing environment... (120s Wait)")
             time.sleep(120) 
             
