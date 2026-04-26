@@ -6,7 +6,7 @@ from solders.pubkey import Pubkey
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("SIP-5.5-HUNTER")
 
-# Initialize Bot
+# Initialize Telegram Bot
 bot = telebot.TeleBot(os.getenv("TELEGRAM_BOT_TOKEN"), threaded=False)
 
 # 2. PROTECTION LOGIC (Band Protection / Rent Guard)
@@ -15,19 +15,19 @@ def check_protections():
         rpc_url = os.getenv("SOLANA_RPC_URL")
         client = Client(rpc_url)
         
-        # Convert string to Pubkey object to prevent 'str' conversion error
+        # FIXED: Converts string address from Env to a valid Pubkey object
         wallet_str = os.getenv("SOLANA_WALLET_ADDRESS")
         wallet_pubkey = Pubkey.from_string(wallet_str)
         
-        # Fetch Balance
+        # Check Wallet Balance
         balance_resp = client.get_balance(wallet_pubkey)
         balance = balance_resp.value / 10**9 
         
-        # Pull Rent Guard from Render Env (Default 0.05 SOL)
+        # Pull Rent Guard from Render Env (Defaults to 0.05 SOL if not set)
         rent_limit = float(os.getenv("RENT_GUARD", "0.05"))
 
         if balance < rent_limit:
-            return False, f"⚠️ Protection: Low Balance ({balance:.4f} SOL)"
+            return False, f"⚠️ Low Balance ({balance:.4f} SOL)"
         
         return True, "✅ All Systems Nominal"
     except Exception as e:
@@ -41,33 +41,33 @@ def handle_status(message):
     
     response = (
         f"🛰️ **S.I.P. v5.5 OMNI-SYNC**\n"
-        f"RPC: ✅ ONLINE (Private)\n"
+        f"RPC: ✅ ONLINE (Private Helius)\n"
         f"Protection: {msg}\n"
         f"Mode: `{mode}`\n"
         f"Jito MEV: 🛡️ ENABLED"
     )
     bot.reply_to(message, response, parse_mode="Markdown")
 
-# 4. FULL LISTENER (The Hunter Engine)
+# 4. FULL HUNTER LISTENER
 @bot.message_handler(func=lambda message: True)
 def hunter_listener(message):
-    # Ignore commands
+    # Ignore command messages
     if message.text and message.text.startswith('/'):
         return
         
     text = message.text.strip()
-    # Scan for Solana CA (32-44 chars)
+    # Check for valid Solana Contract Address length (32-44 chars)
     if 32 <= len(text) <= 44:
         is_safe, reason = check_protections()
         
         if is_safe and os.getenv("HUNTING_STATE") == "Active":
             logger.info(f"🎯 TARGET SPOTTED: {text[:10]}... Executing.")
             bot.reply_to(message, f"🎯 **S.I.P. Hunter:** CA Detected. Processing trade...")
-            # Sniping execution logic would go here
+            # Snipe execution logic hooks in here
         else:
             logger.info(f"🛡️ SIGNAL IGNORED: {reason}")
 
-# 5. STARTUP ENGINE (Resilient Loop)
+# 5. STARTUP ENGINE (Ghost-Killer Loop)
 if __name__ == "__main__":
     logger.info("🚀 STARTING FULL S.I.P. v5.5 HUNTER...")
     
@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     while True:
         try:
-            # 120s Wait: Critical to prevent '409 Conflict' on Render
+            # 120s Stabilization: Prevents Render '409 Conflict' errors
             logger.info("💤 Stabilizing environment... (120s Wait)")
             time.sleep(120) 
             
@@ -88,7 +88,7 @@ if __name__ == "__main__":
             
         except Exception as e:
             if "409" in str(e):
-                logger.warning("🔄 409 Conflict: Waiting 60s for old instance to die...")
+                logger.warning("🔄 409 Conflict: Waiting 60s for old instance to expire...")
                 time.sleep(60)
             else:
                 logger.error(f"💥 Critical Error: {e}")
