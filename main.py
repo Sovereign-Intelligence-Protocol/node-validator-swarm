@@ -44,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger("SIP_v5.5_GOD_MODE")
 
 app = Flask(__name__)
-# FIX 1: Set threaded=False to prevent Render event loop crashes
+# FIXED: Set threaded=False to prevent event loop crashes on Render
 bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"], threaded=False)
 
 # --- CRITICAL FIX: TELEGRAM INITIALIZATION ---
@@ -166,13 +166,18 @@ def handle_webhook():
         data = request.json
         logger.info(f"Incoming Payload: {data}")
 
-        # FIX 2: Only handle Helius/Solana data here. 
-        # Do not process Telegram updates in the webhook while Polling is active.
+        # Distinguish Helius vs Telegram
         if isinstance(data, list) and len(data) > 0 and 'signature' in data[0]:
             logger.info("Helius Solana Transaction Detected")
             return jsonify({"status": "Helius Processed"}), 200
 
-        return jsonify({"status": "Payload Ignored"}), 200
+        elif 'message' in data or 'callback_query' in data:
+            logger.info("Telegram Bot Command Detected")
+            update = telebot.types.Update.de_json(data)
+            bot.process_new_updates([update])
+            return jsonify({"status": "Telegram Processed"}), 200
+
+        return jsonify({"status": "Unknown Payload"}), 400
     except Exception as e:
         logger.error(f"Webhook Error: {e}")
         return jsonify({"error": str(e)}), 500
