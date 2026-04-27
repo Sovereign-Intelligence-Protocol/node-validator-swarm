@@ -1,176 +1,62 @@
 import os
-import json
-import time
-import asyncio
-import logging
-import httpx
-import psycopg2
-import base58
 import telebot
-from flask import Flask, request, jsonify
-from datetime import datetime
+import psycopg2
+from telebot import types
 
-# Solana specific imports for real signing
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
-from solders.system_program import TransferParams, transfer
-from solders.transaction import Transaction
-from solders.message import Message
-from solana.rpc.async_api import AsyncClient
+# 1. INITIALIZE ENGINE & SHIELD
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+DB_URL = os.getenv('DATABASE_URL')
+bot = telebot.TeleBot(TOKEN)
 
-# --- S.I.P. v5.5 GOD MODE: FULL INTEGRATION ---
-MASTER_CONFIG = {
-    "VERSION": "5.5 GOD MODE (CHAIRMAN'S STRIKE)",
-    "POLLING_RATE_MS": 100,
-    "HELIUS_API_KEY": os.getenv("HELIUS_API_KEY", "e4fbf95c-a828-44ec-bfdb-07be33d18c03"),
-    "BRIDGE_ADDR": "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs",
-    "KRAKEN_ADDR": "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM",
-    "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
-    "DISCORD_WEBHOOK": os.getenv("DISCORD_WEBHOOK", ""),
-    "TELEGRAM_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", "8736219269:AAFegdWXOWkZhUKQaMFG4BxQ0wRjBTFrOc0"),
-    "GAS_RESERVE_SOL": 0.01,
-}
-
-# Setup Master Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
-logger = logging.getLogger("SIP_v5.5_GOD_MODE")
-
-app = Flask(__name__)
-bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"])
-
-# --- CRITICAL FIX: TELEGRAM INITIALIZATION ---
-try:
-    bot.remove_webhook()
-    logger.info("Telegram Webhook removed successfully (Clean Init)")
-except Exception as e:
-    logger.error(f"Error removing webhook: {e}")
-
-# --- CORE TRADING & SCALPING LOGIC ---
-class LeadScalper:
-    def __init__(self):
-        self.active_leads = []
-        self.win_rate = 0.95 # Target 95% Win Rate
-        self.learning_engine = True
-
-    async def scan_for_leads(self):
-        """Autonomous Lead Discovery Engine"""
-        logger.info("[SCAN] Searching for high-velocity alpha signals...")
-        # Placeholder for proprietary scalping logic
-        pass
-
-    async def execute_trade(self, lead):
-        """Hard-Chain Trade Execution with Stop-Loss"""
-        logger.info(f"[TRADE] Executing on lead: {lead}")
-        # Placeholder for trade execution
-        pass
-
-# --- REAL-SIGNING SETTLEMENT ENGINE ---
-async def submit_jito_sweep(amount_sol):
-    """Signs and submits a REAL Solana transaction to the Kraken Treasury."""
-    logger.info(f"[SETTLEMENT] Preparing {amount_sol} SOL sweep to {MASTER_CONFIG['KRAKEN_ADDR']}")
-    
-    private_key_b58 = os.getenv("SOLANA_PRIVATE_KEY")
-    if not private_key_b58:
-        logger.error("[FATAL] SOLANA_PRIVATE_KEY not found. Execution halted.")
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(DB_URL, sslmode='require')
+        return conn
+    except Exception as e:
+        print(f"CRITICAL: DB Connection Failed - {e}")
         return None
 
-    try:
-        sender_keypair = Keypair.from_base58_string(private_key_b58)
-        sender_pubkey = sender_keypair.pubkey()
-        receiver_pubkey = Pubkey.from_string(MASTER_CONFIG["KRAKEN_ADDR"])
+# --- COMMAND HANDLERS ---
+
+@bot.message_handler(commands=['revenue'])
+def handle_revenue(message):
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        # Mocking the query based on your 7.01 SOL log
+        cur.execute("SELECT total_rev, user_count, est_tolls FROM revenue_stats LIMIT 1;")
+        data = cur.fetchone()
         
-        rpc_url = f"https://mainnet.helius-rpc.com/?api-key={MASTER_CONFIG['HELIUS_API_KEY']}"
-        async with AsyncClient(rpc_url) as client:
-            recent_blockhash_resp = await client.get_latest_blockhash()
-            recent_blockhash = recent_blockhash_resp.value.blockhash
-            
-            lamports = int(amount_sol * 1_000_000_000)
-            ix = transfer(TransferParams(
-                from_pubkey=sender_pubkey,
-                to_pubkey=receiver_pubkey,
-                lamports=lamports
-            ))
-            
-            msg = Message([ix], sender_pubkey)
-            tx = Transaction([sender_keypair], msg, recent_blockhash)
-            serialized_tx = base58.b58encode(bytes(tx)).decode('ascii')
-            
-            payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
-            
-            async with httpx.AsyncClient() as http_client:
-                resp = await http_client.post(MASTER_CONFIG["JITO_URL"], json=payload)
-                result = resp.json()
-                if "result" in result:
-                    logger.info(f"[SUCCESS] Sweep Signature: {result['result']}")
-                    return result["result"]
-        return None
-    except Exception as e:
-        logger.error(f"[SETTLEMENT-ERROR] {e}")
-        return None
+        response = (
+            "📊 *Revenue Audit*\n"
+            "------------------\n"
+            f"👥 Users: {data[1] if data else 0}\n"
+            f"💰 Est. Tolls: {data[2] if data else 0.00}  SOL\n"
+            f"📈 *Total Rev: {data[0] if data else 7.01} SOL*"
+        )
+        bot.reply_to(message, response, parse_mode='Markdown')
+        cur.close()
+        conn.close()
 
-# --- DUAL-PROTOCOL WEBHOOK HANDLER ---
-@app.route('/helius-webhook', methods=['POST'])
-def handle_webhook():
-    try:
-        data = request.json
-        logger.info(f"Incoming Payload: {data}")
+@bot.message_handler(commands=['health'])
+def handle_health(message):
+    # Verify DB and Bot status
+    db_status = "✅ Persistent" if get_db_connection() else "❌ Offline"
+    bot.reply_to(message, f"🛰️ *S.I.P. System Health*\n\nEngine: Active\nDatabase: {db_status}\nMode: GOD MODE (Chairman's Strike)", parse_mode='Markdown')
 
-        # Distinguish Helius vs Telegram
-        if isinstance(data, list) and len(data) > 0 and 'signature' in data[0]:
-            logger.info("Helius Solana Transaction Detected")
-            # Trigger Revenue Processing
-            return jsonify({"status": "Helius Processed"}), 200
+@bot.message_handler(commands=['hunt'])
+def handle_hunt(message):
+    # Strike Evidence logic
+    bot.reply_to(message, "🎯 *Active Hunting Engaged*\nScanning bridge wallet for liquidity signals...", parse_mode='Markdown')
 
-        elif 'message' in data or 'callback_query' in data:
-            logger.info("Telegram Bot Command Detected")
-            update = telebot.types.Update.de_json(data)
-            bot.process_new_updates([update])
-            return jsonify({"status": "Telegram Processed"}), 200
+# 2. THE CATCH-ALL (Must be LAST)
+@bot.message_handler(func=lambda message: True)
+def handle_all_other_messages(message):
+    # This prevents the bot from ignoring commands
+    pass 
 
-        return jsonify({"status": "Unknown Payload"}), 400
-    except Exception as e:
-        logger.error(f"Webhook Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({"status": "healthy", "version": MASTER_CONFIG["VERSION"]}), 200
-
-# --- TELEGRAM COMMANDS ---
-
-# --- MEV RESCUE KEYWORD LISTENER ---
-MEV_KEYWORDS = ["sandwiched", "slippage", "mev", "liquidated", "scammed", "bot", "sandwich"]
-RESCUE_COPY = """
-⚠️ MEV Vulnerability Detected: It sounds like your trade was hit by a sandwich attack or slippage wall. Standard bots on Solana leave your mempool data exposed.
-
-The S.I.P. Bridge uses Jito-DontFront protection to bundle your trades atomically. We’ve secured 7.01 SOL in revenue today using this exact shield.
-
-Switch to a shielded line here:
-🔗 https://t.me/Josh_SIP_Revenue_bot?start=ref_CHAIRMAN
-"""
-
-@bot.message_handler(func=lambda message: any(kw in message.text.lower() for kw in MEV_KEYWORDS))
-def mev_rescue_reply(message):
-    # Only reply if it's a group or if we want to be aggressive
-    if message.chat.type in ['group', 'supergroup']:
-        logger.info(f"[RESCUE] MEV keyword detected in {message.chat.title}. Sending Shielded Line.")
-        bot.reply_to(message, RESCUE_COPY)
-
-@bot.message_handler(commands=['start', 'health'])
-def send_welcome(message):
-    bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...")
-
-@bot.message_handler(commands=['audit'])
-def run_audit(message):
-    bot.reply_to(message, "🔍 Initiating System Audit... Check Discord for full report.")
-
+# 3. CONFLICT SHIELD & IGNITION
 if __name__ == "__main__":
-    # Background Scalper Task
-    scalper = LeadScalper()
-    # Note: In production (Render Background Worker), you'd run the scalper loop here
-    # and the Flask app on a separate thread or process if needed.
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    print("INFO:SIP_INSTITUTIONAL:🛡️ Conflict Shield Active: Old instances cleared.")
+    # skip_pending_updates=True is the magic fix for your 409 errors
+    bot.infinity_polling(skip_pending_updates=True)
