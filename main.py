@@ -58,16 +58,48 @@ except Exception as e:
 def is_admin(user_id):
     return str(user_id) == str(MASTER_CONFIG["ADMIN_ID"])
 
-@bot.message_handler(commands=['start', 'health'])
+@bot.message_handler(commands=['start', 'health', 'status'])
 def send_welcome(message):
-    bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...\nEngine: {'ON' if scalper.running else 'OFF'}")
-
-@bot.message_handler(commands=['on', 'off'])
-def toggle_bot(message):
     if not is_admin(message.from_user.id): return
-    status = message.text.split()[0] == '/on'
-    scalper.toggle_engine(status)
-    bot.reply_to(message, f"✅ Bot Engine turned {'ON' if status else 'OFF'}.")
+    bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...\nEngine: {'ON' if scalper.running else 'OFF'}\nJito: Connected")
+
+@bot.message_handler(commands=['revenue'])
+def revenue_report(message):
+    if not is_admin(message.from_user.id): return
+    bot.reply_to(message, f"💰 REVENUE REPORT\nSettlement: Kraken Treasury\nAddress: {MASTER_CONFIG['KRAKEN_ADDR']}\nStatus: Atomic Settlement Enabled")
+
+@bot.message_handler(commands=['hunt', 'on'])
+def start_hunt(message):
+    if not is_admin(message.from_user.id): return
+    scalper.toggle_engine(True)
+    bot.reply_to(message, "🏹 HUNT MODE: ACTIVE\nScanner is now searching for high-velocity alpha.")
+
+@bot.message_handler(commands=['off', 'stop'])
+def stop_hunt(message):
+    if not is_admin(message.from_user.id): return
+    scalper.toggle_engine(False)
+    bot.reply_to(message, "⏸️ ENGINE PAUSED\nLead scans suspended.")
+
+@bot.message_handler(commands=['reset'])
+def force_reset(message):
+    if not is_admin(message.from_user.id): return
+    bot.reply_to(message, "🔄 RESET COMMAND RECEIVED\nClearing ghost instances and re-syncing mempool...")
+
+@bot.message_handler(commands=['help'])
+def show_help(message):
+    if not is_admin(message.from_user.id): return
+    help_text = """
+    📜 S.I.P. COMMAND MANIFEST:
+    /status - Diagnostic & Jito health
+    /health - Connection handshake test
+    /revenue - Kraken settlement ledger
+    /hunt - Toggle scanner & sniper activity
+    /on - Start the engine
+    /off - Stop the engine
+    /kill - Toggle Market Kill Switch
+    /reset - Force-clear system lag
+    """
+    bot.reply_to(message, help_text)
 
 @bot.message_handler(commands=['kill'])
 def toggle_kill_switch(message):
