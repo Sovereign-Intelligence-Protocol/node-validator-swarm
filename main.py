@@ -218,4 +218,6 @@ if __name__ == "__main__":
     
     # Start Scalper Loop
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(scalper.scan_for_leads()
+    loop.run_until_complete(scalper.scan_for_leads())
+
+# --- END OF S.I.P. v5.5 SOURCE --
