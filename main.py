@@ -104,6 +104,30 @@ def send_welcome(message):
         
     bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...\nEngine: {'ON' if scalper.running else 'OFF'}\nJito: Connected")
 
+@bot.message_handler(commands=['dashboard'])
+def show_dashboard(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM subscriptions WHERE status = 'active';")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        # Using specific metrics requested previously for the dashboard report
+        report = (
+            "🏛️ **S.I.P. GLOBAL PERFORMANCE**\n"
+            "----------------------------------\n"
+            f"👥 **Bridge Traffic:** `{count}` Active Users\n"
+            " \n"
+            "🏦 **Treasury:** `Kraken Settled` 🟢\n"
+            "🛡️ **Status:** `Atomic Settlement Active`"
+        )
+        bot.reply_to(message, report, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"[DB-ERROR] Dashboard failed: {e}")
+        bot.reply_to(message, "❌ Error retrieving dashboard data.")
+
 @bot.message_handler(commands=['subscribers'])
 def count_subscribers(message):
     if not is_admin(message.from_user.id): return
@@ -146,6 +170,7 @@ def show_help(message):
     if not is_admin(message.from_user.id): return
     help_text = """
     📜 S.I.P. COMMAND MANIFEST:
+    /dashboard - Global performance metrics
     /status - Diagnostic & Jito health
     /health - Connection handshake test
     /revenue - Kraken settlement ledger
