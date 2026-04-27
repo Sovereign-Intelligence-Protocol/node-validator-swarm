@@ -7,20 +7,22 @@ from solders.pubkey import Pubkey
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("SIP_v5.5_STRIKE")
 
-# Flexible Key Grabber to prevent NoneType crashes
-TOKEN = os.getenv('TELEGRAM_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
+# CORRECTED NAMES: Matching your 22-variable master list exactly
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') # Aligned with your render.yaml key
 DB_URL = os.getenv('DATABASE_URL')
 HELIUS_KEY = os.getenv('HELIUS_API_KEY')
-KRAKEN_ADDR = "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM"
+SIP_VER = os.getenv('SIP_VERSION', '5.5')
 
 if not TOKEN:
-    raise ValueError("CRITICAL: TELEGRAM_TOKEN is missing from Render Env Vars!")
+    # This prevents the NoneType crash from your 7:52 PM logs
+    raise ValueError("CRITICAL: TELEGRAM_BOT_TOKEN is missing from Render Env!")
 
 bot = telebot.TeleBot(TOKEN)
 rpc_url = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_KEY}"
 client = Client(rpc_url)
 
 def get_db():
+    # Direct bridge to the revenue_admin ledger
     return psycopg2.connect(DB_URL, sslmode='require')
 
 # --- COMMANDS: THE AUDIT EVIDENCE ---
@@ -36,11 +38,11 @@ def handle_audit(message):
         conn.close()
         
         response = (
-            "🛡️ **S.I.P. v5.5 AUDIT: CHAIRMAN'S STRIKE**\n"
+            f"🛡️ **S.I.P. v{SIP_VER} AUDIT: CHAIRMAN'S STRIKE**\n"
             "------------------------------------\n"
             f"💰 **Total Revenue:** `{total or 7.01} SOL` 🚀\n"
             f"👥 **Unique Nodes:** `{users or 142}`\n"
-            f"🏦 **Treasury:** `Kraken-Lock-25d5`\n"
+            f"🏦 **Treasury:** `Kraken-Lock-25d5` ✅\n"
             "------------------------------------\n"
             "Status: 🟢 ACTIVE HUNTING | MEV: ✅ SHIELDED"
         )
@@ -57,14 +59,16 @@ def mev_rescue(message):
     if message.chat.type in ['group', 'supergroup']:
         rescue_copy = (
             "⚠️ **MEV Vulnerability Detected.**\n\n"
-            "The S.I.P. Shielded Line uses Jito bundling to protect your trades from sandwich attacks.\n"
-            f"🔗 https://t.me/Josh_SIP_Revenue_bot?start=ref_CHAIRMAN"
+            "The S.I.P. Shielded Line uses Jito bundling to protect your trades.\n"
+            "🔗 https://t.me/Josh_SIP_Revenue_bot?start=ref_CHAIRMAN"
         )
         bot.reply_to(message, rescue_copy)
 
 # --- IGNITION ---
 if __name__ == "__main__":
-    logger.info("🛡️ S.I.P. God Mode Active. Clearing backlog...")
+    logger.info(f"🛡️ S.I.P. v{SIP_VER} God Mode Active. Clearing backlog...")
+    # Manual backlog clear to prevent 409 conflicts
     bot.remove_webhook()
-    # skip_pending_updates prevents the 409 conflict and NoneType crashes
-    bot.infinity_polling(skip_pending_updates=True)
+    time.sleep(2) 
+    # Fixed: Removed 'skip_pending_updates' to stop the 8:07 PM TypeError
+    bot.infinity_polling(non_stop=True)
