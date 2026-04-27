@@ -9,7 +9,7 @@ import telebot
 import threading
 import requests
 from flask import Flask, request, jsonify
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Solana specific imports for real signing
 from solders.keypair import Keypair
@@ -47,6 +47,27 @@ app = Flask(__name__)
 # FIXED: Set threaded=False to prevent event loop crashes on Render
 bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"], threaded=False)
 
+# --- NEW: DATABASE INITIALIZATION (SUBSCRIPTION TABLE) ---
+def init_db():
+    try:
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expiry_date TIMESTAMP,
+                status TEXT DEFAULT 'active'
+            );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info("[DB] Subscription table verified/created.")
+    except Exception as e:
+        logger.error(f"[DB-ERROR] Could not initialize tables: {e}")
+
 # --- CRITICAL FIX: TELEGRAM INITIALIZATION ---
 try:
     bot.remove_webhook()
@@ -60,8 +81,43 @@ def is_admin(user_id):
 
 @bot.message_handler(commands=['start', 'health', 'status'])
 def send_welcome(message):
-    if not is_admin(message.from_user.id): return
+    # RECORD NEW SUBSCRIBER ON START
+    try:
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        # Default 30-day sub for new hits
+        expiry = datetime.now() + timedelta(days=30)
+        cur.execute("""
+            INSERT INTO subscriptions (user_id, username, expiry_date)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO NOTHING;
+        """, (message.from_user.id, message.from_user.username, expiry))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[DB-ERROR] Subscriber log failed: {e}")
+
+    if not is_admin(message.from_user.id): 
+        bot.reply_to(message, "🛡️ S.I.P. Secure Line Established. Monitoring for MEV vulnerabilities.")
+        return
+        
     bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...\nEngine: {'ON' if scalper.running else 'OFF'}\nJito: Connected")
+
+@bot.message_handler(commands=['subscribers'])
+def count_subscribers(message):
+    if not is_admin(message.from_user.id): return
+    try:
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM subscriptions WHERE status = 'active';")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        bot.reply_to(message, f"📈 SUBSCRIPTION STATS\nTotal Active Subscribers: {count}")
+    except Exception as e:
+        logger.error(f"[DB-ERROR] Count failed: {e}")
+        bot.reply_to(message, "❌ Error retrieving subscriber data.")
 
 @bot.message_handler(commands=['revenue'])
 def revenue_report(message):
@@ -93,6 +149,7 @@ def show_help(message):
     /status - Diagnostic & Jito health
     /health - Connection handshake test
     /revenue - Kraken settlement ledger
+    /subscribers - Total user count
     /hunt - Toggle scanner & sniper activity
     /on - Start the engine
     /off - Stop the engine
@@ -245,6 +302,9 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
+    # Initialize Database Tables
+    init_db()
+    
     # Start Flask in a separate thread
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
