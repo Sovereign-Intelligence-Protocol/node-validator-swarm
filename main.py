@@ -88,7 +88,7 @@ class LeadScalper:
 
 scalper = LeadScalper()
 
-# --- REAL-SIGNING SETTLEMENT ENGINE ---
+# --- REAL-SIGNING SETTLEMENT ENGINE (INSTITUTIONAL GRADE) ---
 async def submit_jito_sweep(amount_sol):
     """Signs and submits a REAL Solana transaction to the Kraken Treasury."""
     logger.info(f"[SETTLEMENT] Preparing {amount_sol} SOL sweep to {MASTER_CONFIG['KRAKEN_ADDR']}")
@@ -132,7 +132,7 @@ async def submit_jito_sweep(amount_sol):
         logger.error(f"[SETTLEMENT-ERROR] {e}")
         return None
 
-# --- DUAL-PROTOCOL WEBHOOK HANDLER ---
+# --- DUAL-PROTOCOL WEBHOOK HANDLER (INSTITUTIONAL GRADE) ---
 @app.route('/helius-webhook', methods=['POST'])
 def handle_webhook():
     try:
