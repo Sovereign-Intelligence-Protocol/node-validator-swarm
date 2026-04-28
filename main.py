@@ -8,23 +8,27 @@ from solders.message import MessageV0
 from websockets import connect
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- 122nd OVERLAP PROTECTION ---
+# --- 122nd OVERLAP PROTECTION (HEARTBEAT) ---
 def run_health_check():
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Sovereign Predator Online")
+    
     port = int(os.getenv("PORT", "10000"))
     server = HTTPServer(('0.0.0.0', port), HealthHandler)
     print(f"✅ Port {port} Bound. Overlap Cleared.")
     server.serve_forever()
 
+# --- SIGTERM HANDLER (CLEAN DEPLOY) ---
 def handle_exit(signum, frame):
+    print("👋 Shutting down for new deployment...")
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_exit)
 
+# --- THE PREDATOR ENGINE ---
 class SovereignPredator:
     def __init__(self):
         self.keypair = Keypair.from_base58_string(os.getenv("SOLANA_PRIVATE_KEY"))
@@ -37,7 +41,8 @@ class SovereignPredator:
             try: await c.post(url, json={"chat_id": os.getenv("TELEGRAM_ADMIN_ID"), "text": f"🚀 S.I.P.: {text}"})
             except: pass
 
-    async def execute_strike(self, mint):
+    async def strike(self, mint):
+        # 0.05 Trade + 0.01 Toll + Tip
         ixs = [
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=Pubkey.from_string(mint), lamports=int(0.05 * 10**9))),
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=self.home_base, lamports=int(0.01 * 10**9))),
@@ -48,23 +53,25 @@ class SovereignPredator:
         bundle = base58.b58encode(bytes(tx)).decode('utf-8')
         async with httpx.AsyncClient() as http:
             await http.post("https://ny.mainnet.block-engine.jito.wtf/api/v1/bundles", json={"jsonrpc":"2.0","id":1,"method":"sendBundle","params":[[bundle]]})
-            await self.report(f"Target Hit: {mint}\n0.01 SOL Toll collected.")
+            await self.report(f"Target Hit: {mint}\nToll Collected.")
 
     async def hunt(self):
         async with connect(os.getenv("WSS_URL")) as ws:
             await ws.send(json.dumps({"jsonrpc":"2.0","id":1,"method":"logsSubscribe","params":[{"mentions":["6EF8rrecthR5DkZJv9RKzyuCc91upS8P49fN2fN1"]}]}))
-            await self.report("Predator Active. Scanning...")
+            await self.report("Predator Active. Scanning Mempool...")
             while True:
                 msg = await ws.recv()
                 data = json.loads(msg)
                 logs = str(data.get('params', {}).get('result', {}).get('value', {}).get('logs', []))
                 if "Instruction: Create" in logs:
                     m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}pump", logs)
-                    if m and os.getenv("LIVE_TRADING") == "True": await self.execute_strike(m.group(0))
+                    if m and os.getenv("LIVE_TRADING") == "True": await self.strike(m.group(0))
 
 async def main():
+    # Start Overlap Heartbeat FIRST
     threading.Thread(target=run_health_check, daemon=True).start()
-    await asyncio.sleep(2)
+    await asyncio.sleep(2) # Buffer for port binding
+    # Start Hunting
     await SovereignPredator().hunt()
 
 if __name__ == "__main__":
