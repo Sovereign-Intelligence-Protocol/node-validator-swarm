@@ -7,7 +7,7 @@ from solders.transaction import VersionedTransaction
 from solders.message import MessageV0
 from websockets import connect
 
-# --- MAPPED TO YOUR ENVIRONMENTALS ---
+# --- MAPPED TO YOUR EXACT ENVIRONMENTALS ---
 RPC_URL = os.getenv("SOLANA_RPC_URL_BASE")
 WSS_URL = os.getenv("WSS_URL")
 SEED_PRIVATE_KEY = os.getenv("PRIVATE_KEY")
@@ -19,7 +19,7 @@ LIVE_MODE = os.getenv("LIVE_TRADING") == "True"
 
 # --- SYSTEM CONSTANTS ---
 TOLL_AMOUNT = 0.01
-TRADE_SIZE = 0.05  # Standard strike from your $31 balance
+TRADE_SIZE = 0.05  # Using a portion of your $31 balance per strike
 PUMP_PROGRAM = "6EF8rrecthR5DkZJv9RKzyuCc91upS8P49fN2fN1"
 
 class SovereignPredator:
@@ -88,17 +88,15 @@ class SovereignPredator:
                 # Logic: Find new token creations
                 log_data = str(data.get('params', {}).get('result', {}).get('value', {}).get('logs', []))
                 if "Instruction: Create" in log_data:
-                    # Extracting the Mint Address from the log's account keys
                     try:
-                        # In 2026 logs, the mint is often the 1st or 2nd account in the creation call
-                        # This looks for the unique Pump.fun mint pattern
+                        # Extracting the Pump.fun mint pattern
                         mint_search = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}pump", log_data)
                         if mint_search:
                             target_mint = mint_search.group(0)
                             if LIVE_MODE:
                                 await self.execute_atomic_bundle(target_mint)
                             else:
-                                print(f"🔍 [TEST MODE] Would have struck: {target_mint}")
+                                print(f"🔍 [TEST MODE] Identified: {target_mint}")
                     except Exception as e:
                         print(f"Parse Error: {e}")
 
