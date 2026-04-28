@@ -7,10 +7,10 @@ from solders.transaction import VersionedTransaction
 from solders.message import MessageV0
 from websockets import connect
 
-# --- MAPPED TO YOUR EXACT ENVIRONMENTALS ---
+# --- MAPPED TO YOUR RENDER.YAML ENVIRONMENTALS ---
 RPC_URL = os.getenv("SOLANA_RPC_URL_BASE")
 WSS_URL = os.getenv("WSS_URL")
-SEED_PRIVATE_KEY = os.getenv("PRIVATE_KEY")
+SEED_PRIVATE_KEY = os.getenv("SOLANA_PRIVATE_KEY") # Matches your yaml key
 HOME_BASE = Pubkey.from_string(os.getenv("SOLANA_WALLET_ADDRESS"))
 TELE_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
@@ -19,7 +19,7 @@ LIVE_MODE = os.getenv("LIVE_TRADING") == "True"
 
 # --- SYSTEM CONSTANTS ---
 TOLL_AMOUNT = 0.01
-TRADE_SIZE = 0.05  # Using a portion of your $31 balance per strike
+TRADE_SIZE = 0.05  # Your standard strike size
 PUMP_PROGRAM = "6EF8rrecthR5DkZJv9RKzyuCc91upS8P49fN2fN1"
 
 class SovereignPredator:
@@ -79,24 +79,23 @@ class SovereignPredator:
         async with connect(WSS_URL) as ws:
             sub = {"jsonrpc":"2.0","id":1,"method":"logsSubscribe","params":[{"mentions":[PUMP_PROGRAM]}]}
             await ws.send(json.dumps(sub))
-            await self.report("Predator Online. Scanning Mempool...")
+            await self.report("Sovereign Predator Online. Monitoring for Whales...")
 
             while True:
                 msg = await ws.recv()
                 data = json.loads(msg)
                 
-                # Logic: Find new token creations
                 log_data = str(data.get('params', {}).get('result', {}).get('value', {}).get('logs', []))
                 if "Instruction: Create" in log_data:
                     try:
-                        # Extracting the Pump.fun mint pattern
+                        # Extracting the Pump.fun mint pattern from logs
                         mint_search = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}pump", log_data)
                         if mint_search:
                             target_mint = mint_search.group(0)
                             if LIVE_MODE:
                                 await self.execute_atomic_bundle(target_mint)
                             else:
-                                print(f"🔍 [TEST MODE] Identified: {target_mint}")
+                                print(f"🔍 [TEST] New Pump.fun Token: {target_mint}")
                     except Exception as e:
                         print(f"Parse Error: {e}")
 
