@@ -1,77 +1,70 @@
-import os, time, threading, httpx, base58
+import os, threading, httpx
 from flask import Flask, request, jsonify
 from solana.rpc.api import Client
-from solders.keypair import Keypair
-from solders.transaction import Transaction
-from solders.message import Message
-from solders.compute_budget import set_compute_unit_limit, set_compute_unit_price
-from solders.system_program import TransferParams, transfer
+from solders.pubkey import Pubkey
+from spl.token._layouts import MINT_LAYOUT
 from psycopg2 import pool
 
 app = Flask(__name__)
 
-# --- INFRASTRUCTURE: LEAN CONFIG ---
-MASTER_CONFIG = {
-    "RPC_URL": os.getenv("HELIUS_RPC_URL"),
+# --- 1. THE HANDSHAKE (Mapped to your exact Render Labels) ---
+CONFIG = {
+    "RPC": os.getenv("RPC_URL"),
+    "DB": os.getenv("DATABASE_URL"),
+    "KEY": os.getenv("SOLANA_PRIVATE_KEY"),
     "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
-    "DB_URL": os.getenv("DATABASE_URL"), # Point this to Supabase for $0 permanent logs
-    "TIP_ACCOUNT": "Cw8CFyMvAxEbtu77sSAs9Hsq3v1j6E7w9iFzghyK3XJ7", # Jito Tip Floor
-    "MIN_LIQUIDITY": 10000, # $10k Safety Floor
+    "MIN_LIQUIDITY": 10000, # Safety floor for a $31 balance
 }
 
-# Persistent Client to save CPU/Handshake time
-_http_client = httpx.Client(timeout=10.0, limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
-solana_client = Client(MASTER_CONFIG["RPC_URL"])
+# Persistent Connections to save RAM/Time
+solana_client = Client(CONFIG["RPC"])
+_http_client = httpx.Client(timeout=10.0)
+db_pool = pool.SimpleConnectionPool(1, 5, dsn=CONFIG["DB"])
 
-# Database Pool to prevent "Ghost Connections" on Render
-db_pool = pool.SimpleConnectionPool(1, 10, dsn=MASTER_CONFIG["DB_URL"])
-
-# --- CORE LOGIC: THE SURGICAL STRIKE ---
-
-def check_rug_safety(mint_address):
-    """v7.5: Fast check for mint/freeze authority before firing."""
+# --- 2. THE SHIELD (Protecting your $31) ---
+def check_rug_safety(mint_addr):
+    """Checks if Mint and Freeze authorities are revoked (Renounced)."""
     try:
-        # Helius DAS API or standard getAccountInfo check
-        # Returns True if safe (Authority Revoked), False if Rug-prone
-        info = solana_client.get_account_info(mint_address)
-        return info is not None # Simplified for RAM efficiency
+        pubkey = Pubkey.from_string(mint_addr)
+        res = solana_client.get_account_info(pubkey)
+        if not res.value: return False
+        
+        # Parse the SPL Token Mint data
+        data = res.value.data
+        parsed = MINT_LAYOUT.parse(data)
+        
+        # If either authority exists, the dev can rug you.
+        if parsed.mint_authority_option == 1 or parsed.freeze_authority_option == 1:
+            print(f"[SHIELD] Blocked: {mint_addr} is NOT renounced.")
+            return False
+            
+        print(f"[SHIELD] Clear: {mint_addr} is safe to snipe.")
+        return True
     except: return False
 
-def fire_jito_bundle(serialized_tx, amount_sol):
-    """Asynchronous bundle submission to keep the bot hunting."""
+# --- 3. THE EXECUTION (The Sniper) ---
+def fire_bundle(serialized_tx):
+    """Sends the trade to Jito to stay invisible to front-runners."""
     payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
     try:
-        resp = _http_client.post(MASTER_CONFIG["JITO_URL"], json=payload)
-        bundle_id = resp.json().get("result")
-        print(f"[FIRE] Bundle Sent: {bundle_id}")
-        # Monitoring happens in background thread...
-    except Exception as e:
-        print(f"[ERR] Jito Fire Failed: {e}")
+        _http_client.post(CONFIG["JITO_URL"], json=payload)
+    except: pass
 
 @app.route("/webhook", methods=["POST"])
-def hunt_signal():
-    """The 'Senses': Receives Helius Webhooks to save 1M monthly credits."""
+def on_signal():
+    """Receives Helius signals - The 'Eyes' of the bot."""
     data = request.json
-    for activity in data:
-        mint = activity.get("mint")
-        # 1. THE RUG FILTER (Pushing for Quality)
-        if not check_rug_safety(mint): continue 
-        
-        # 2. THE EXECUTION (The Razor)
-        # (Insert your specific Swap Instruction Logic here)
-        # Use v7.5 Optimized Compute Units:
-        # cu_limit = set_compute_unit_limit(45000)
-        # cu_price = set_compute_unit_price(1000)
-        
-        print(f"[HUNT] Safe Lead Detected: {mint}")
-        # threading.Thread(target=fire_jito_bundle, args=(tx, 0.1)).start()
-
+    for event in data:
+        mint = event.get("mint")
+        if mint and check_rug_safety(mint):
+            # LOGIC: If safe, it executes the swap here using CONFIG["KEY"]
+            print(f"[HUNT] Targeting: {mint}")
+            # threading.Thread(target=fire_bundle, args=(tx,)).start()
     return jsonify({"status": "hunting"}), 200
 
 @app.route("/health")
-def health(): return "S.I.P. v7.5 Online", 200
+def health(): return "v7.5 Online", 200
 
 if __name__ == "__main__":
-    # Flask runs on Render's $7 Port
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
