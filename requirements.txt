@@ -4,9 +4,3 @@ httpx
 base58
 solana
 solders
-pyTelegramBotAPI==4.20.0
-python-dotenv
-redis
-requests
-beautifulsoup4
-playwright
