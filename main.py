@@ -8,7 +8,7 @@ from solders.message import MessageV0
 from websockets import connect
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- 122nd OVERLAP PROTECTION ---
+# --- 122nd OVERLAP HEARTBEAT ---
 def run_health_check():
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -47,6 +47,7 @@ class SovereignPredator:
             except: pass
 
     async def execute_atomic_bundle(self, mint):
+        # Trade (0.05) + Toll (0.01) + Jito Tip
         ixs = [
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=Pubkey.from_string(mint), lamports=int(0.05 * 10**9))),
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=HOME_BASE, lamports=int(0.01 * 10**9))),
