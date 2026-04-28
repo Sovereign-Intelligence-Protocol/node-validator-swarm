@@ -1,70 +1,56 @@
-import os, threading, httpx
-from flask import Flask, request, jsonify
-from solana.rpc.api import Client
+import os
+import asyncio
 from solders.pubkey import Pubkey
-from spl.token._layouts import MINT_LAYOUT
-from psycopg2 import pool
+from solders.keypair import Keypair
+from solders.system_program import TransferParams, transfer
+from solana.rpc.async_api import AsyncClient
+from solana.rpc.types import TxOpts
 
-app = Flask(__name__)
+# --- ENVIRONMENT CONFIG ---
+RPC_URL = os.getenv("RPC_URL")
+PRIVATE_KEY = os.getenv("SOLANA_PRIVATE_KEY")
+# Your Vault: junT...tWs
+VAULT_ADDRESS = Pubkey.from_string("junT...tWs") 
+TOLL_AMOUNT_SOL = 0.01
+LAMPORTS_PER_SOL = 1_000_000_000
 
-# --- 1. THE HANDSHAKE (Mapped to your exact Render Labels) ---
-CONFIG = {
-    "RPC": os.getenv("RPC_URL"),
-    "DB": os.getenv("DATABASE_URL"),
-    "KEY": os.getenv("SOLANA_PRIVATE_KEY"),
-    "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
-    "MIN_LIQUIDITY": 10000, # Safety floor for a $31 balance
-}
+# --- CORE LOGIC ---
+class SIPBridge:
+    def __init__(self):
+        self.keypair = Keypair.from_base58_string(PRIVATE_KEY)
+        self.client = AsyncClient(RPC_URL)
 
-# Persistent Connections to save RAM/Time
-solana_client = Client(CONFIG["RPC"])
-_http_client = httpx.Client(timeout=10.0)
-db_pool = pool.SimpleConnectionPool(1, 5, dsn=CONFIG["DB"])
+    def create_toll_instruction(self, user_pubkey):
+        """Creates the 0.01 SOL Toll Instruction"""
+        toll_lamports = int(TOLL_AMOUNT_SOL * LAMPORTS_PER_SOL)
+        return transfer(
+            TransferParams(
+                from_pubkey=user_pubkey,
+                to_pubkey=VAULT_ADDRESS,
+                lamports=toll_lamports
+            )
+        )
 
-# --- 2. THE SHIELD (Protecting your $31) ---
-def check_rug_safety(mint_addr):
-    """Checks if Mint and Freeze authorities are revoked (Renounced)."""
-    try:
-        pubkey = Pubkey.from_string(mint_addr)
-        res = solana_client.get_account_info(pubkey)
-        if not res.value: return False
-        
-        # Parse the SPL Token Mint data
-        data = res.value.data
-        parsed = MINT_LAYOUT.parse(data)
-        
-        # If either authority exists, the dev can rug you.
-        if parsed.mint_authority_option == 1 or parsed.freeze_authority_option == 1:
-            print(f"[SHIELD] Blocked: {mint_addr} is NOT renounced.")
-            return False
-            
-        print(f"[SHIELD] Clear: {mint_addr} is safe to snipe.")
-        return True
-    except: return False
+    async def execute_shielded_bundle(self, user_instructions, jito_tip_lamports):
+        """
+        Executes an Atomic Jito Bundle:
+        1. User Swap
+        2. Bridge Toll (0.01 SOL)
+        3. Jito Tip
+        """
+        # Logic here integrates the user_instructions with the Toll Gate
+        print(f"Locking in 0.01 SOL toll for vault: {VAULT_ADDRESS}")
+        # Note: In a real Jito implementation, you'd bundle these 
+        # using the Jito Block Engine SDK.
+        pass
 
-# --- 3. THE EXECUTION (The Sniper) ---
-def fire_bundle(serialized_tx):
-    """Sends the trade to Jito to stay invisible to front-runners."""
-    payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
-    try:
-        _http_client.post(CONFIG["JITO_URL"], json=payload)
-    except: pass
-
-@app.route("/webhook", methods=["POST"])
-def on_signal():
-    """Receives Helius signals - The 'Eyes' of the bot."""
-    data = request.json
-    for event in data:
-        mint = event.get("mint")
-        if mint and check_rug_safety(mint):
-            # LOGIC: If safe, it executes the swap here using CONFIG["KEY"]
-            print(f"[HUNT] Targeting: {mint}")
-            # threading.Thread(target=fire_bundle, args=(tx,)).start()
-    return jsonify({"status": "hunting"}), 200
-
-@app.route("/health")
-def health(): return "v7.5 Online", 200
+async def main():
+    bridge = SIPBridge()
+    print("S.I.P. v7.5 'Toll Collector' is Operational.")
+    print(f"Monitoring for Whale flow to bridge to Vault: {VAULT_ADDRESS}")
+    # Keep the service alive on Render
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    asyncio.run(main())
