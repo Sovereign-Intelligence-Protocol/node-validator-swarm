@@ -34,6 +34,9 @@ MASTER_CONFIG = {
     "KILL_SWITCH": os.getenv("KILL_SWITCH", "false").lower() == "true", # Market Crash Protection
     "STOP_LOSS_PCT": float(os.getenv("STOP_LOSS_PCT", "0.05")), # Risk Management
     "DATABASE_URL": os.getenv("DATABASE_URL"),
+    # --- S.I.P. GOVERNOR ADDITIONS ---
+    "RENDER_API_KEY": os.getenv("RENDER_API_KEY"),
+    "RENDER_SERVICE_ID": "srv-d7nl9cf7f7vs73freqfg",
 }
 
 # Setup Master Logging
@@ -229,10 +232,35 @@ class LeadScalper:
 
 scalper = LeadScalper()
 
+# --- S.I.P. GOVERNOR: AUTONOMOUS SCALING ENGINE ---
+def run_governor_scaling(amount_sol):
+    """Checks for alpha threshold and scales Render nodes autonomously."""
+    if amount_sol >= 7.01:
+        logger.info(f"[GOVERNOR] 7.01 SOL Alpha Threshold met. Scaling S.I.P. Swarm...")
+        url = f"https://api.render.com/v1/services/{MASTER_CONFIG['RENDER_SERVICE_ID']}/scale"
+        headers = {
+            "Authorization": f"Bearer {MASTER_CONFIG['RENDER_API_KEY']}",
+            "Content-Type": "application/json"
+        }
+        try:
+            # Scale to 2 instances (Hard Capped for Budget Safety)
+            resp = requests.post(url, json={"num_instances": 2}, headers=headers)
+            if resp.status_code == 200:
+                logger.info("[GOVERNOR] Scale request successful. Swarm expanded.")
+            else:
+                logger.error(f"[GOVERNOR] Scale request failed: {resp.status_code}")
+        except Exception as e:
+            logger.error(f"[GOVERNOR-ERROR] Scaling exception: {e}")
+
 # --- REAL-SIGNING SETTLEMENT ENGINE (INSTITUTIONAL GRADE - SYNCHRONOUS) ---
 def submit_jito_sweep(amount_sol):
-    """Signs and submits a REAL Solana transaction to the Kraken Treasury."""
-    logger.info(f"[SETTLEMENT] Preparing {amount_sol} SOL sweep to {MASTER_CONFIG['KRAKEN_ADDR']}")
+    """Signs and submits a REAL Solana transaction with 70/30 Livelihood Split."""
+    
+    # CALCULATE 70/30 GOVERNOR SPLIT
+    livelihood_amt = amount_sol * 0.70
+    logger.info(f"[SETTLEMENT] Split Active: {livelihood_amt} SOL to Kraken | 30% retained for Growth.")
+    
+    logger.info(f"[SETTLEMENT] Preparing {livelihood_amt} SOL sweep to {MASTER_CONFIG['KRAKEN_ADDR']}")
     
     private_key_b58 = os.getenv("SOLANA_PRIVATE_KEY")
     if not private_key_b58:
@@ -250,7 +278,7 @@ def submit_jito_sweep(amount_sol):
         recent_blockhash_resp = client.get_latest_blockhash()
         recent_blockhash = recent_blockhash_resp.value.blockhash
         
-        lamports = int(amount_sol * 1_000_000_000)
+        lamports = int(livelihood_amt * 1_000_000_000)
         ix = transfer(TransferParams(
             from_pubkey=sender_pubkey,
             to_pubkey=receiver_pubkey,
@@ -265,8 +293,13 @@ def submit_jito_sweep(amount_sol):
         
         resp = requests.post(MASTER_CONFIG["JITO_URL"], json=payload)
         result = resp.json()
+        
         if "result" in result:
             logger.info(f"[SUCCESS] Sweep Signature: {result['result']}")
+            
+            # TRIGGER AUTONOMOUS GOVERNOR SCALING AFTER SUCCESSFUL SETTLEMENT
+            run_governor_scaling(amount_sol)
+            
             return result["result"]
         return None
     except Exception as e:
