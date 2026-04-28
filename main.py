@@ -8,26 +8,33 @@ from solders.message import MessageV0
 from websockets import connect
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- 122nd OVERLAP & SIGTERM PROTECTION ---
+# --- 1. THE 122nd OVERLAP HEARTBEAT (START IMMEDIATELY) ---
 def run_health_check():
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
+            self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Sovereign Predator Online")
-    
-    port = int(os.getenv("PORT", "10000"))
-    server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    print(f"✅ Port {port} Bound. Overlap Cleared.")
-    server.serve_forever()
+        def log_message(self, format, *args): return # Silent logs
 
+    port = int(os.getenv("PORT", "10000"))
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthHandler)
+        print(f"✅ Port {port} Bound. Overlap Cleared.")
+        server.serve_forever()
+    except Exception as e:
+        print(f"❌ Port Error: {e}")
+        sys.exit(1)
+
+# Handle Render's shutdown signals properly
 def handle_exit(signum, frame):
-    print("👋 Shutting down for new deploy...")
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_exit)
+signal.signal(signal.SIGINT, handle_exit)
 
-# --- SYSTEM CONFIG ---
+# --- 2. CONFIGURATION ---
 RPC_URL = os.getenv("SOLANA_RPC_URL_BASE")
 WSS_URL = os.getenv("WSS_URL")
 SEED_PK = os.getenv("SOLANA_PRIVATE_KEY")
@@ -48,7 +55,8 @@ class SovereignPredator:
             try: await c.post(url, json={"chat_id": ADMIN_ID, "text": f"🚀 S.I.P.: {text}"})
             except: pass
 
-    async def execute_atomic_bundle(self, mint):
+    async def execute_strike(self, mint):
+        # Trade (0.05) + Toll (0.01) + Jito Tip
         ixs = [
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=Pubkey.from_string(mint), lamports=int(0.05 * 10**9))),
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=HOME_BASE, lamports=int(0.01 * 10**9))),
@@ -61,7 +69,7 @@ class SovereignPredator:
         
         async with httpx.AsyncClient() as http:
             await http.post("https://ny.mainnet.block-engine.jito.wtf/api/v1/bundles", json={"jsonrpc":"2.0","id":1,"method":"sendBundle","params":[[bundle]]})
-            await self.report(f"Target Hit: {mint}\n0.01 SOL Toll collected.")
+            await self.report(f"Target Hit! Mint: {mint}\n0.01 SOL Toll collected.")
 
     async def hunt(self):
         async with connect(WSS_URL) as ws:
@@ -72,19 +80,4 @@ class SovereignPredator:
                 data = json.loads(msg)
                 logs = str(data.get('params', {}).get('result', {}).get('value', {}).get('logs', []))
                 if "Instruction: Create" in logs:
-                    m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}pump", logs)
-                    if m and LIVE: await self.execute_atomic_bundle(m.group(0))
-
-async def main():
-    # CRITICAL: Start the heartbeat thread FIRST
-    t = threading.Thread(target=run_health_check, daemon=True)
-    t.start()
-    
-    # Wait 2 seconds to ensure port is bound before hunting
-    await asyncio.sleep(2)
-    
-    bot = SovereignPredator()
-    await bot.hunt()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+                    m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32
