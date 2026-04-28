@@ -1,6 +1,5 @@
 flask
 psycopg2-binary
 httpx
-base58
 solana
 solders
