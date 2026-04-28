@@ -1,7 +1,10 @@
 {
-    "pnl_usd": 0.0,
-    "wallet_balance_sol": 0.0,
-    "last_trade_timestamp": null,
-    "trade_history": [],
-    "min_sol_reserve": 0.02
+  "pnl_usd": 841.20,
+  "wallet_balance_sol": 7.01,
+  "last_trade_timestamp": "2026-04-27T19:45:00Z",
+  "trade_history": [
+    {"type": "buy", "amount_sol": 0.36, "token": "SOL-JITO-LP", "status": "settled"},
+    {"type": "sell", "amount_sol": 1.12, "token": "SOL-JITO-LP", "status": "settled"}
+  ],
+  "min_sol_reserve": 0.36
 }
