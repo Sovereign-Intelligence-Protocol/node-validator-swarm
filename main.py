@@ -19,14 +19,14 @@ from solders.transaction import Transaction
 from solders.message import Message
 from solana.rpc.api import Client
 
-# --- S.I.P. v5.5 GOD MODE: PURE SOLANA LEAD SCALPER ---
+# --- S.I.P. v6.0 GOD MODE: PURE SOLANA LEAD SCALPER ---
 MASTER_CONFIG = {
-    "VERSION": "5.5 GOD MODE (CHAIRMAN'S STRIKE)",
+    "VERSION": "6.0 GOD MODE (CHAIRMAN'S STRIKE)",
     "POLLING_RATE_MS": int(os.getenv("POLLING_RATE_MS", "100")),
     "HELIUS_API_KEY": os.getenv("HELIUS_API_KEY"),
     "BRIDGE_ADDR": os.getenv("SOLANA_BRIDGE_ADDR", "junTtoquNLdo4PFeC7JbH6Mzj7aztaTckK4dQrr1tWs"),
     "KRAKEN_ADDR": os.getenv("KRAKEN_TREASURY_ADDR", "25d5qmLMbjFvz3wijmTQKEqTvb7UZxjJhqugrzPYx3kM"),
-    "JITO_URL": os.getenv("JITO_URL", "https://mainnet.block-engine.jito.wtf/api/v1/bundles"),
+    "JITO_URL": "https://mainnet.block-engine.jito.wtf/api/v1/bundles",
     "DISCORD_WEBHOOK": os.getenv("DISCORD_WEBHOOK"),
     "TELEGRAM_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN"),
     "ADMIN_ID": os.getenv("TELEGRAM_ADMIN_ID"), # Owner Control
@@ -44,13 +44,13 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
-logger = logging.getLogger("SIP_v5.5_GOD_MODE")
+logger = logging.getLogger("SIP_v6.0_GOD_MODE")
 
 app = Flask(__name__)
 # FIXED: Set threaded=False to prevent event loop crashes on Render
 bot = telebot.TeleBot(MASTER_CONFIG["TELEGRAM_TOKEN"], threaded=False)
 
-# --- NEW: DATABASE INITIALIZATION (SUBSCRIPTION TABLE) ---
+# --- DATABASE INITIALIZATION (SURGICAL: ADDED AUDIT TABLE) ---
 def init_db():
     try:
         conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
@@ -64,12 +64,57 @@ def init_db():
                 status TEXT DEFAULT 'active'
             );
         """)
+        # SURGICAL ADDITION: 7-Day Performance Memory
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trade_audit (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                signature TEXT,
+                success BOOLEAN,
+                profit_sol FLOAT,
+                error_type TEXT
+            );
+        """)
         conn.commit()
         cur.close()
         conn.close()
-        logger.info("[DB] Subscription table verified/created.")
+        logger.info("[DB] Subscription & Audit tables verified.")
     except Exception as e:
         logger.error(f"[DB-ERROR] Could not initialize tables: {e}")
+
+# --- SURGICAL ADDITION: 7-DAY SHREDDER ---
+def prune_old_data():
+    """Shreds logs older than 7 days to protect 1GB storage limit."""
+    try:
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trade_audit WHERE timestamp < NOW() - INTERVAL '7 days';")
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info("[STORAGE] 7-day memory rotation complete.")
+    except Exception as e:
+        logger.error(f"[STORAGE-ERROR] Pruning failed: {e}")
+
+# --- SURGICAL ADDITION: PERFORMANCE HEURISTICS ---
+def run_performance_review():
+    """Bot reviews win rate and tunes itself autonomously."""
+    try:
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("SELECT success FROM trade_audit ORDER BY timestamp DESC LIMIT 10;")
+        results = cur.fetchall()
+        cur.close()
+        conn.close()
+        if len(results) >= 5:
+            win_rate = sum(1 for r in results if r[0]) / len(results)
+            if win_rate < 0.75:
+                logger.warning(f"[HEURISTIC] Win rate ({win_rate}) low. Tuning engine...")
+                MASTER_CONFIG["POLLING_RATE_MS"] = max(50, MASTER_CONFIG["POLLING_RATE_MS"] - 10)
+                MASTER_CONFIG["GAS_RESERVE_SOL"] += 0.002
+        prune_old_data() 
+    except Exception as e:
+        logger.error(f"[HEURISTIC-ERROR] Review failed: {e}")
 
 # --- CRITICAL FIX: TELEGRAM INITIALIZATION ---
 try:
@@ -105,7 +150,7 @@ def send_welcome(message):
         bot.reply_to(message, "🛡️ S.I.P. Secure Line Established. Monitoring for MEV vulnerabilities.")
         return
         
-    bot.reply_to(message, f"🛡️ S.I.P. v5.5 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...\nEngine: {'ON' if scalper.running else 'OFF'}\nJito: Connected")
+    bot.reply_to(message, f"🛡️ S.I.P. v6.0 ONLINE\nStatus: Healthy\nTreasury: {MASTER_CONFIG['KRAKEN_ADDR'][:6]}...\nEngine: {'ON' if scalper.running else 'OFF'}\nJito: Connected")
 
 @bot.message_handler(commands=['dashboard'])
 def show_dashboard(message):
@@ -115,6 +160,8 @@ def show_dashboard(message):
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM subscriptions WHERE status = 'active';")
         count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM trade_audit WHERE success = TRUE;")
+        wins = cur.fetchone()[0]
         cur.close()
         conn.close()
         # Using specific metrics requested previously for the dashboard report
@@ -122,7 +169,7 @@ def show_dashboard(message):
             "🏛️ **S.I.P. GLOBAL PERFORMANCE**\n"
             "----------------------------------\n"
             f"👥 **Bridge Traffic:** `{count}` Active Users\n"
-            " \n"
+            f"🎯 **Successful Snipes (7D):** `{wins}`\n"
             "🏦 **Treasury:** `Kraken Settled` 🟢\n"
             "🛡️ **Status:** `Atomic Settlement Active`"
         )
@@ -144,9 +191,7 @@ def count_subscribers(message):
         bot.reply_to(message, f"📈 SUBSCRIPTION STATS\nTotal Active Subscribers: {count}")
     except Exception as e:
         logger.error(f"[DB-ERROR] Count failed: {e}")
-        bot.reply_to(message, "❌ Error retrieving subscriber data.")
-
-@bot.message_handler(commands=['revenue'])
+        bot.reply_to(message, "❌ Error retrieving subscriber data.")@bot.message_handler(commands=['revenue'])
 def revenue_report(message):
     if not is_admin(message.from_user.id): return
     bot.reply_to(message, f"💰 REVENUE REPORT\nSettlement: Kraken Treasury\nAddress: {MASTER_CONFIG['KRAKEN_ADDR']}\nStatus: Atomic Settlement Enabled")
@@ -252,9 +297,9 @@ def run_governor_scaling(amount_sol):
         except Exception as e:
             logger.error(f"[GOVERNOR-ERROR] Scaling exception: {e}")
 
-# --- REAL-SIGNING SETTLEMENT ENGINE (INSTITUTIONAL GRADE - SYNCHRONOUS) ---
+# --- SURGICAL ALTERATION: ZERO-API GHOST SETTLEMENT ---
 def submit_jito_sweep(amount_sol):
-    """Signs and submits a REAL Solana transaction with 70/30 Livelihood Split."""
+    """Signs and submits a REAL Solana transaction via Raw Jito Injection."""
     
     # CALCULATE 70/30 GOVERNOR SPLIT
     livelihood_amt = amount_sol * 0.70
@@ -289,16 +334,29 @@ def submit_jito_sweep(amount_sol):
         tx = Transaction([sender_keypair], msg, recent_blockhash)
         serialized_tx = base58.b58encode(bytes(tx)).decode('ascii')
         
+        # RAW JSON-RPC JITO INJECTION
         payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[serialized_tx]]}
         
         resp = requests.post(MASTER_CONFIG["JITO_URL"], json=payload)
         result = resp.json()
         
-        if "result" in result:
+        success = "result" in result
+        
+        # SURGICAL ADDITION: LOG TO AUDIT TABLE
+        conn = psycopg2.connect(MASTER_CONFIG["DATABASE_URL"])
+        cur = conn.cursor()
+        cur.execute("INSERT INTO trade_audit (signature, success, profit_sol) VALUES (%s, %s, %s)", 
+                   (result.get('result', 'FAILED'), success, amount_sol))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if success:
             logger.info(f"[SUCCESS] Sweep Signature: {result['result']}")
             
             # TRIGGER AUTONOMOUS GOVERNOR SCALING AFTER SUCCESSFUL SETTLEMENT
             run_governor_scaling(amount_sol)
+            run_performance_review()
             
             return result["result"]
         return None
