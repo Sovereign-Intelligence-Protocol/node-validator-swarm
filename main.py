@@ -8,7 +8,7 @@ from solders.message import MessageV0
 from websockets import connect
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- 122nd OVERLAP PROTECTION (HEARTBEAT) ---
+# --- THE 122nd OVERLAP LOGIC ---
 def run_health_check():
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -21,9 +21,7 @@ def run_health_check():
     print(f"✅ Port {port} Bound. Overlap Cleared.")
     server.serve_forever()
 
-# --- SIGTERM HANDLER (CLEAN DEPLOY) ---
 def handle_exit(signum, frame):
-    print("👋 Shutting down for new deployment...")
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_exit)
@@ -41,8 +39,7 @@ class SovereignPredator:
             try: await c.post(url, json={"chat_id": os.getenv("TELEGRAM_ADMIN_ID"), "text": f"🚀 S.I.P.: {text}"})
             except: pass
 
-    async def strike(self, mint):
-        # 0.05 Trade + 0.01 Toll + Tip
+    async def execute_strike(self, mint):
         ixs = [
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=Pubkey.from_string(mint), lamports=int(0.05 * 10**9))),
             transfer(TransferParams(from_pubkey=self.keypair.pubkey(), to_pubkey=self.home_base, lamports=int(0.01 * 10**9))),
@@ -58,20 +55,18 @@ class SovereignPredator:
     async def hunt(self):
         async with connect(os.getenv("WSS_URL")) as ws:
             await ws.send(json.dumps({"jsonrpc":"2.0","id":1,"method":"logsSubscribe","params":[{"mentions":["6EF8rrecthR5DkZJv9RKzyuCc91upS8P49fN2fN1"]}]}))
-            await self.report("Predator Active. Scanning Mempool...")
+            await self.report("Predator Active. Scanning...")
             while True:
                 msg = await ws.recv()
                 data = json.loads(msg)
                 logs = str(data.get('params', {}).get('result', {}).get('value', {}).get('logs', []))
                 if "Instruction: Create" in logs:
                     m = re.search(r"[1-9A-HJ-NP-Za-km-z]{32,44}pump", logs)
-                    if m and os.getenv("LIVE_TRADING") == "True": await self.strike(m.group(0))
+                    if m and os.getenv("LIVE_TRADING") == "True": await self.execute_strike(m.group(0))
 
 async def main():
-    # Start Overlap Heartbeat FIRST
     threading.Thread(target=run_health_check, daemon=True).start()
-    await asyncio.sleep(2) # Buffer for port binding
-    # Start Hunting
+    await asyncio.sleep(2)
     await SovereignPredator().hunt()
 
 if __name__ == "__main__":
