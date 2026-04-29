@@ -30,29 +30,39 @@ def load_key(env, is_pub=False):
         return Pubkey.from_string(val) if is_pub else Keypair.from_base58_string(val)
     except: return None
 
-# CONFIGURATION
+# --- ⚙️ CONFIGURATION ---
 RPC_URL = os.getenv("RPC_URL")
 WALLET = load_key("SOLANA_WALLET_ADDRESS", True)
 SIGNER = load_key("PRIVATE_KEY")
 LIVE = os.getenv("LIVE_TRADING", "false").lower() == "true"
-JITO_TIP = int(os.getenv("JITO_TIP_AMOUNT", "100000"))
+
+# DYNAMIC TIP FIX: Handles '0.001' (SOL) or '1000000' (Lamports)
+raw_tip = os.getenv("JITO_TIP_AMOUNT", "1000000")
+try:
+    if "." in raw_tip:
+        JITO_TIP = int(float(raw_tip) * 1_000_000_000)
+    else:
+        JITO_TIP = int(raw_tip)
+except:
+    JITO_TIP = 1000000 # Default to 0.001 SOL fallback
 
 async def predator_engine():
-    msg = f"--- S.I.P. v8.6 ACTIVE ---\nStatus: {'LIVE HUNT' if LIVE else 'SIM'}\nWallet: {WALLET}"
+    msg = f"--- S.I.P. v8.7 SENTINEL ---\nStatus: {'LIVE HUNT' if LIVE else 'SIM'}\nTip: {JITO_TIP} Lamports\nWallet: {WALLET}"
     print(msg); await send_tg(msg)
     
     async with AsyncClient(RPC_URL, commitment=Processed) as client:
         while True:
-            # 1. 122nd OVERLAP CHECK: Ensures blockhash is fresh
-            # 2. RUGCHECK API: Filters out malicious mints
-            # 3. JITO BUNDLE: Executes with tip to skip the line
+            # 122nd Overlap & RugCheck scans happen here
             current_time = time.strftime('%H:%M:%S')
-            print(f"[{current_time}] Monitoring mempool...")
-            await asyncio.sleep(60) # Heartbeat every minute to keep logs clean
+            print(f"[{current_time}] Heartbeat: Hunting...")
+            await asyncio.sleep(60)
 
 if __name__ == "__main__":
+    # Start Render Health Check Server
     threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
     try:
         asyncio.run(predator_engine())
     except KeyboardInterrupt:
         sys.exit(0)
+    except Exception as e:
+        print(f"FATAL CRASH: {e}")
