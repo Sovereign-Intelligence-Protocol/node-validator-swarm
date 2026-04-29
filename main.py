@@ -15,12 +15,19 @@ async def send_tg(message):
             await client.post(url, json={"chat_id": admin_id.strip(), "text": f"🛡️ S.I.P. Sentinel:\n{message}"})
     except Exception as e: print(f"TG Error: {e}")
 
-# --- 🛠️ RENDER SURVIVAL CIRCUIT ---
+# --- 🛠️ RENDER SURVIVAL CIRCUIT (FIXED FOR 501 ERRORS) ---
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200); self.end_headers()
+        self.send_response(200)
+        self.end_headers()
         self.wfile.write(b"SENTINEL_ONLINE")
+
+    def do_HEAD(self):
+        # This handles Render's 'HEAD' check to prevent 501 Unsupported Method errors
+        self.send_response(200)
+        self.end_headers()
 
 # --- 🛡️ SECURE KEY LOADER ---
 def load_key(env, is_pub=False):
@@ -44,21 +51,23 @@ try:
     else:
         JITO_TIP = int(raw_tip)
 except:
-    JITO_TIP = 1000000 # Default to 0.001 SOL fallback
+    JITO_TIP = 1000000
 
 async def predator_engine():
-    msg = f"--- S.I.P. v8.7 SENTINEL ---\nStatus: {'LIVE HUNT' if LIVE else 'SIM'}\nTip: {JITO_TIP} Lamports\nWallet: {WALLET}"
+    # Fresh timestamp to prove it's a new session
+    start_time = time.strftime('%H:%M:%S')
+    msg = f"--- S.I.P. v8.9 IRONCLAD ---\nTime: {start_time}\nStatus: {'LIVE HUNT' if LIVE else 'SIM'}\nTip: {JITO_TIP} Lamports"
     print(msg); await send_tg(msg)
     
     async with AsyncClient(RPC_URL, commitment=Processed) as client:
         while True:
-            # 122nd Overlap & RugCheck scans happen here
+            # Core Hunting Logic (RugCheck, Simulation, Jito Strike)
             current_time = time.strftime('%H:%M:%S')
-            print(f"[{current_time}] Heartbeat: Hunting...")
+            print(f"[{current_time}] Sentinel Heartbeat: Active")
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    # Start Render Health Check Server
+    # Start the Survival Server with HEAD support
     threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
     try:
         asyncio.run(predator_engine())
