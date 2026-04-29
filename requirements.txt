@@ -1,5 +1,5 @@
-solders
-httpx
-psycopg2-binary
-solana
-python-dotenv
+httpx==0.27.0
+solders==0.27.1
+solana==0.34.0
+psycopg2-binary==2.9.12
+base58==2.1.1
