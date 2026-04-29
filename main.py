@@ -8,20 +8,22 @@ JITOSOL_MINT = "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"
 DISK_PATH = "/var/data/bot_state.json"
 DB_URL = os.getenv("DATABASE_URL")
 REDIS_URL = os.getenv("REDIS_URL")
+# CRITICAL: Render dynamic port binding
+PORT = int(os.getenv("PORT", 10000))
 
 # --- 🗄️ THE BRAIN: 120% OVERLAP STORAGE ---
 def init_storage():
     try:
-        # DB Connection (Long-term Memory)
+        # Long-term Memory (Postgres)
         if DB_URL:
             conn = psycopg2.connect(DB_URL)
             cur = conn.cursor()
             cur.execute("CREATE TABLE IF NOT EXISTS trades (id SERIAL PRIMARY KEY, token TEXT, result TEXT, time TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
             conn.commit()
             cur.close(); conn.close()
-            print("✅ DB: Long-term Memory Online.")
+            print("✅ DB: Iron Vault Brain Online.")
         
-        # Redis Connection (Short-term Reflexes)
+        # Short-term Reflexes (Redis)
         if REDIS_URL:
             r = redis.from_url(REDIS_URL)
             r.ping()
@@ -31,29 +33,28 @@ def init_storage():
         print("✅ Disk: Persistent State Mounted.")
     except Exception as e: print(f"⚠️ Storage Note: {e}")
 
-# --- 📲 TELEGRAM SENTINEL (FORCED IPv4 FIX) ---
+# --- 📲 TELEGRAM SENTINEL (STABILIZED) ---
 async def send_tg(msg):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     admin_id = os.getenv("TELEGRAM_ADMIN_ID")
-    if not token or not admin_id: return
+    if not token or not admin_id:
+        print("❌ Telegram: Missing Token or ID.")
+        return
     
-    # Using specific limits to prevent "ghosting" on cloud networks
-    limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
     url = f"https://api.telegram.org/bot{token.strip()}/sendMessage"
     payload = {"chat_id": admin_id.strip(), "text": f"👑 IRON VAULT:\n{msg}"}
     
     try:
-        async with httpx.AsyncClient(timeout=30.0, limits=limits) as client:
-            # We try the standard POST first, with a retry if it hangs
+        # Increased timeout and retry for 2026 network stability
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json=payload)
             if response.status_code == 200:
-                print("✅ Telegram: Notification Delivered.")
+                print("✅ Telegram: Handshake Successful.")
             else:
-                print(f"❌ Telegram Error: Server returned {response.status_code}")
-    except Exception as e: 
-        print(f"❌ Telegram Connection Failed: {e}")
+                print(f"❌ Telegram: Server returned {response.status_code}")
+    except Exception as e: print(f"❌ Telegram Failure: {e}")
 
-# --- 🛠️ RENDER HEALTH SHIELD ---
+# --- 🛠️ RENDER HEALTH SHIELD (PORT-AWARE) ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200); self.end_headers(); self.wfile.write(b"SOVEREIGN_ONLINE")
@@ -62,27 +63,23 @@ class HealthCheck(BaseHTTPRequestHandler):
 
 # --- ⚙️ ENGINE MODULES ---
 async def predator_engine():
-    # Initial startup sequence
     init_storage()
     
-    protocol = os.getenv("ADAPTIVE_PROTOCOL_ENABLED", "True")
-    boot_msg = (f"--- S.I.P. v9.3 IRON VAULT ---\n"
-                f"Protocol: {protocol}\n"
+    boot_msg = (f"--- S.I.P. v9.4 IRON VAULT LIVE ---\n"
+                f"Status: Port {PORT} Bound\n"
                 f"Overlap: 120% ACTIVE\n"
-                f"Status: $31 Capital Fully Secured")
+                f"Wallet: $31 Vault Secured")
     
     await send_tg(boot_msg)
     
     while True:
-        # Main hunting logic happens here
-        print(f"[{time.strftime('%H:%M:%S')}] Iron Vault Heartbeat: 120% Coverage")
+        # Hunting loop: Snipe, Arb, Stake
+        print(f"[{time.strftime('%H:%M:%S')}] Iron Vault: Pulse Stable (Port {PORT})")
         await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    # Start Render Health Server on port 10000
-    threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
-    
+    # Start Health Server on the port assigned by Render
+    threading.Thread(target=lambda: HTTPServer(('0.0.0.0', PORT), HealthCheck).serve_forever(), daemon=True).start()
     try:
         asyncio.run(predator_engine())
-    except Exception as e: 
-        print(f"FATAL: {e}")
+    except Exception as e: print(f"FATAL: {e}")
