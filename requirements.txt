@@ -1,6 +1,5 @@
-solana
 solders
 httpx
 psycopg2-binary
-redis
-base58
+solana
+python-dotenv
