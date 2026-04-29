@@ -3,12 +3,11 @@ from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- ⚙️ CROSS-REFERENCED CONFIG ---
+# --- CONFIG ---
 PORT = int(os.getenv("PORT", 10000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = str(os.getenv("TELEGRAM_ADMIN_ID", "")).strip()
 RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-WALLET_ADDR = os.getenv("WALLET_ADDRESS")
 PRIV_KEY_STR = os.getenv("PRIVATE_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -27,43 +26,33 @@ async def send_tg(msg):
             await client.post(url, json={"chat_id": ADMIN_ID, "text": f"🦅 PREDATOR:\n{msg}"})
     except: pass
 
-# --- 🔫 THE TRIGGER ---
 async def fire_swap(target_mint, amount_sol=0.01):
     kp = get_keypair()
-    if not kp: return "❌ KEY ERROR: Check PRIVATE_KEY label."
+    if not kp: return "❌ KEY ERROR"
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
-            # Jupiter Quote with 2026 Dynamic Slippage
             q = await client.get(f"https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint={target_mint}&amount={int(amount_sol * 10**9)}&dynamicSlippage=true&maxSlippageBps=200")
             quote = q.json()
-            # Swap Build
             s = await client.post("https://quote-api.jup.ag/v6/swap", json={"quoteResponse": quote, "userPublicKey": str(kp.pubkey()), "wrapAndUnwrapSol": True, "prioritizationFeeLamports": "auto"})
             tx_data = s.json().get("swapTransaction")
-            # Sign & Jito MEV Shield
             raw_tx = VersionedTransaction.from_bytes(base64.b64decode(tx_data))
             signature = kp.sign_message(raw_tx.message.to_bytes_versioned())
             signed_tx = VersionedTransaction.populate(raw_tx.message, [signature])
-            # Jito Broadcast
-            jito_url = "https://mainnet.block-engine.jito.wtf/api/v1/transactions"
             payload = {"jsonrpc":"2.0","id":1,"method":"sendTransaction","params":[base64.b64encode(bytes(signed_tx)).decode('utf-8'), {"encoding":"base64"}]}
-            final = await client.post(jito_url, json=payload)
+            final = await client.post("https://mainnet.block-engine.jito.wtf/api/v1/transactions", json=payload)
             res = final.json().get("result")
-            return f"🎯 KILL CONFIRMED: https://solscan.io/tx/{res}" if res else "⚠️ Jito Refused Bundle."
+            return f"🎯 KILL CONFIRMED: https://solscan.io/tx/{res}" if res else "⚠️ Jito Refused"
     except Exception as e: return f"❌ ERROR: {str(e)}"
 
-# --- 🧠 THE BRAIN (120s Heartbeat) ---
 async def predator_scanner():
     await send_tg("👁️ GOD MODE v16.2.3 LIVE.\nHeartbeat: 120s Pulse Active.\nShield: MEV-Jito Active.")
     while running:
         try:
-            # Active Alpha Hunt (Testing with USDC)
             target = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
             sig = await fire_swap(target, 0.01)
             if "🎯" in sig: await send_tg(sig)
-            
-            print(f"Pulse check: {time.ctime()} - Standing by for next Alpha.")
+            print(f"Pulse check: {time.ctime()}")
         except: pass
-        # This is your deployment stability pulse
         await asyncio.sleep(120) 
 
 async def command_listener():
@@ -77,7 +66,7 @@ async def command_listener():
                     msg = update.get("message", {})
                     if str(msg.get("from", {}).get("id")) == ADMIN_ID:
                         if msg.get("text") == "/status":
-                            await send_tg("🟢 v16.2.3 PULSE: Normal.\nDeployment: Active.\nMEV-Shield: Shielded.")
+                            await send_tg("🟢 v16.2.3 PULSE: Normal.\nDeployment: Active.")
             except: pass
             await asyncio.sleep(1)
 
