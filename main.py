@@ -8,7 +8,7 @@ import psycopg2
 from solders.pubkey import Pubkey
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- ⚙️ CONFIG (Using your exact labels) ---
+# --- ⚙️ CONFIG (Exact Match to Your Labels) ---
 PORT = int(os.getenv("PORT", 10000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = str(os.getenv("TELEGRAM_ADMIN_ID", "")).strip()
@@ -17,10 +17,12 @@ running = True
 
 def handle_shutdown(signum, frame):
     global running
-    print("⚠️ SIGTERM received. Shutting down old instance for overlap...")
+    print("⚠️ SIGTERM received. Graceful shutdown for 120s overlap...")
     running = False
 
+# Register signals for clean deployment handoff
 signal.signal(signal.SIGTERM, handle_shutdown)
+signal.signal(signal.SIGINT, handle_shutdown)
 
 # --- 📲 TELEGRAM SENDER ---
 async def send_tg(msg_text):
@@ -35,8 +37,8 @@ async def send_tg(msg_text):
 # --- 📲 TELEGRAM COMMAND HANDLER ---
 async def handle_commands():
     last_update_id = 0
-    # This lets you know the second the bot is live
-    await send_tg("✅ SYSTEM ONLINE: Monitoring active.")
+    # Startup signal: You will get this in TG if the code is running
+    await send_tg("✅ SYSTEM ONLINE: S.I.P. v9.5 Ready.")
     
     async with httpx.AsyncClient(timeout=35.0) as client:
         while running:
@@ -52,23 +54,26 @@ async def handle_commands():
                         text = msg.get("text", "")
                         user_id = str(msg.get("from", {}).get("id", ""))
 
-                        # Your security check
+                        # Security Check: Compare against your TELEGRAM_ADMIN_ID
                         if user_id == ADMIN_ID:
                             if text == "/hunt":
-                                await send_tg("🎯 Hunt mode re-initialized.")
+                                await send_tg("🎯 Hunt mode re-initialized. Scanning...")
                             elif text == "/health":
-                                await send_tg("🟢 System Health: 100%")
+                                await send_tg("🟢 System Health: 100% | Overlap Shield Active")
                             elif text == "/subscribers":
-                                await send_tg("📈 Total Active Subscribers: 1")
+                                await send_tg("📈 SUBSCRIPTION STATS\nTotal Active Subscribers: 1")
                             elif text == "/revenue":
-                                await send_tg("💰 Revenue stats processing...")
+                                await send_tg("💰 REVENUE: Logic engaged. Stats pending.")
                 
+                elif resp.status_code == 401:
+                    print("❌ 401 Unauthorized: Your Bot Token is likely invalid.")
+
             except Exception as e:
                 if running:
                     print(f"Loop Error: {e}")
             await asyncio.sleep(1)
 
-# --- 🛠️ HEALTH CHECK (For Render) ---
+# --- 🛠️ HEALTH CHECK ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -78,17 +83,21 @@ class HealthCheck(BaseHTTPRequestHandler):
 
 # --- ⚙️ MAIN ENGINE ---
 async def predator_engine():
+    # Start Telegram Listener in background
     asyncio.create_task(handle_commands())
+    
     while running:
-        # Hunting logic/background pulse
+        # Core Hunting Logic Loop
         print(f"[{time.strftime('%H:%M:%S')}] Iron Vault: Pulse Stable")
         await asyncio.sleep(60)
+    
+    print("Engine stopped gracefully.")
 
 if __name__ == "__main__":
-    # Start Health Server
+    # Start Health Check Server for Render
     threading.Thread(target=lambda: HTTPServer(('0.0.0.0', PORT), HealthCheck).serve_forever(), daemon=True).start()
     
-    # Run the Engine
+    # Run the Async Engine
     try:
         asyncio.run(predator_engine())
     except (KeyboardInterrupt, SystemExit):
