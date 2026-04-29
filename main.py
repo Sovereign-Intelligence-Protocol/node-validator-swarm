@@ -37,6 +37,21 @@ async def send_tg(msg_text):
 # --- 📲 TELEGRAM COMMAND HANDLER ---
 async def handle_commands():
     last_update_id = 0
+    
+    # --- SURGICAL UPDATE: FRESH START LOGIC ---
+    # This clears the "backlog" so the bot only hears new messages
+    async with httpx.AsyncClient() as client:
+        try:
+            init_url = f"https://api.telegram.org/bot{TOKEN}/getUpdates?limit=1&offset=-1"
+            init_resp = await client.get(init_url)
+            if init_resp.status_code == 200:
+                results = init_resp.json().get("result", [])
+                if results:
+                    last_update_id = results[0]["update_id"]
+        except Exception as e:
+            print(f"Initial sync error: {e}")
+    # ------------------------------------------
+
     # Startup signal: You will get this in TG if the code is running
     await send_tg("✅ SYSTEM ONLINE: S.I.P. v9.5 Ready.")
     
