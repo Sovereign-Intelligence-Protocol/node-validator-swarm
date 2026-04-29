@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 # --- ⚙️ CONFIG (Exact Match to Your Labels) ---
 PORT = int(os.getenv("PORT", 10000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Surgical Fix: Ensure the Admin ID is stripped of any accidental spaces
 ADMIN_ID = str(os.getenv("TELEGRAM_ADMIN_ID", "")).strip()
 
 running = True
@@ -20,13 +21,13 @@ def handle_shutdown(signum, frame):
     print("⚠️ SIGTERM received. Graceful shutdown for 120s overlap...")
     running = False
 
-# Register signals for clean deployment handoff
 signal.signal(signal.SIGTERM, handle_shutdown)
 signal.signal(signal.SIGINT, handle_shutdown)
 
 # --- 📲 TELEGRAM SENDER ---
 async def send_tg(msg_text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    # Ensure we use the clean ADMIN_ID here too
     payload = {"chat_id": ADMIN_ID, "text": f"👑 IRON VAULT:\n{msg_text}"}
     try:
         async with httpx.AsyncClient() as client:
@@ -38,8 +39,7 @@ async def send_tg(msg_text):
 async def handle_commands():
     last_update_id = 0
     
-    # --- SURGICAL UPDATE: FRESH START LOGIC ---
-    # This clears the "backlog" so the bot only hears new messages
+    # Fresh Start: Clears old messages so the bot only hears NEW commands
     async with httpx.AsyncClient() as client:
         try:
             init_url = f"https://api.telegram.org/bot{TOKEN}/getUpdates?limit=1&offset=-1"
@@ -50,9 +50,7 @@ async def handle_commands():
                     last_update_id = results[0]["update_id"]
         except Exception as e:
             print(f"Initial sync error: {e}")
-    # ------------------------------------------
 
-    # Startup signal: You will get this in TG if the code is running
     await send_tg("✅ SYSTEM ONLINE: S.I.P. v9.5 Ready.")
     
     async with httpx.AsyncClient(timeout=35.0) as client:
@@ -67,9 +65,10 @@ async def handle_commands():
                         last_update_id = update["update_id"]
                         msg = update.get("message", {})
                         text = msg.get("text", "")
-                        user_id = str(msg.get("from", {}).get("id", ""))
+                        # Surgical Fix: Clean the incoming user_id for comparison
+                        user_id = str(msg.get("from", {}).get("id", "")).strip()
 
-                        # Security Check: Compare against your TELEGRAM_ADMIN_ID
+                        # The Security Gate
                         if user_id == ADMIN_ID:
                             if text == "/hunt":
                                 await send_tg("🎯 Hunt mode re-initialized. Scanning...")
@@ -79,9 +78,11 @@ async def handle_commands():
                                 await send_tg("📈 SUBSCRIPTION STATS\nTotal Active Subscribers: 1")
                             elif text == "/revenue":
                                 await send_tg("💰 REVENUE: Logic engaged. Stats pending.")
+                        else:
+                            print(f"⛔ Unauthorized: {user_id} tried to use {text}")
                 
                 elif resp.status_code == 401:
-                    print("❌ 401 Unauthorized: Your Bot Token is likely invalid.")
+                    print("❌ 401 Unauthorized: Check your TELEGRAM_BOT_TOKEN!")
 
             except Exception as e:
                 if running:
@@ -98,21 +99,13 @@ class HealthCheck(BaseHTTPRequestHandler):
 
 # --- ⚙️ MAIN ENGINE ---
 async def predator_engine():
-    # Start Telegram Listener in background
     asyncio.create_task(handle_commands())
-    
     while running:
-        # Core Hunting Logic Loop
         print(f"[{time.strftime('%H:%M:%S')}] Iron Vault: Pulse Stable")
         await asyncio.sleep(60)
-    
-    print("Engine stopped gracefully.")
 
 if __name__ == "__main__":
-    # Start Health Check Server for Render
     threading.Thread(target=lambda: HTTPServer(('0.0.0.0', PORT), HealthCheck).serve_forever(), daemon=True).start()
-    
-    # Run the Async Engine
     try:
         asyncio.run(predator_engine())
     except (KeyboardInterrupt, SystemExit):
