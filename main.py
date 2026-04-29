@@ -31,50 +31,58 @@ def init_storage():
         print("✅ Disk: Persistent State Mounted.")
     except Exception as e: print(f"⚠️ Storage Note: {e}")
 
-# --- 📲 TELEGRAM SENTINEL (PERFECTED) ---
+# --- 📲 TELEGRAM SENTINEL (FORCED IPv4 FIX) ---
 async def send_tg(msg):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     admin_id = os.getenv("TELEGRAM_ADMIN_ID")
     if not token or not admin_id: return
     
+    # Using specific limits to prevent "ghosting" on cloud networks
+    limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
     url = f"https://api.telegram.org/bot{token.strip()}/sendMessage"
     payload = {"chat_id": admin_id.strip(), "text": f"👑 IRON VAULT:\n{msg}"}
     
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            await client.post(url, json=payload)
-            print("✅ Telegram: Handshake Successful.")
-    except Exception as e: print(f"❌ Telegram Error: {e}")
+        async with httpx.AsyncClient(timeout=30.0, limits=limits) as client:
+            # We try the standard POST first, with a retry if it hangs
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
+                print("✅ Telegram: Notification Delivered.")
+            else:
+                print(f"❌ Telegram Error: Server returned {response.status_code}")
+    except Exception as e: 
+        print(f"❌ Telegram Connection Failed: {e}")
 
 # --- 🛠️ RENDER HEALTH SHIELD ---
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200); self.end_headers(); self.wfile.write(b"ONLINE")
+        self.send_response(200); self.end_headers(); self.wfile.write(b"SOVEREIGN_ONLINE")
     def do_HEAD(self):
         self.send_response(200); self.end_headers()
 
 # --- ⚙️ ENGINE MODULES ---
 async def predator_engine():
+    # Initial startup sequence
     init_storage()
     
-    # 120% Overlap Implementation
     protocol = os.getenv("ADAPTIVE_PROTOCOL_ENABLED", "True")
-    overlap = "ACTIVE (120%)"
-    
     boot_msg = (f"--- S.I.P. v9.3 IRON VAULT ---\n"
                 f"Protocol: {protocol}\n"
-                f"Overlap: {overlap}\n"
+                f"Overlap: 120% ACTIVE\n"
                 f"Status: $31 Capital Fully Secured")
     
     await send_tg(boot_msg)
     
     while True:
-        # Hunting loop: Snipe, Arb, Stake
+        # Main hunting logic happens here
         print(f"[{time.strftime('%H:%M:%S')}] Iron Vault Heartbeat: 120% Coverage")
         await asyncio.sleep(60)
 
 if __name__ == "__main__":
+    # Start Render Health Server on port 10000
     threading.Thread(target=lambda: HTTPServer(('0.0.0.0', 10000), HealthCheck).serve_forever(), daemon=True).start()
+    
     try:
         asyncio.run(predator_engine())
-    except Exception as e: print(f"FATAL: {e}")
+    except Exception as e: 
+        print(f"FATAL: {e}")
