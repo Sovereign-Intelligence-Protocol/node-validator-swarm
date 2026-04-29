@@ -1,5 +1,6 @@
-solana==0.36.11
-solders==0.21.0
-httpx==0.28.1
-psycopg2-binary==2.9.10
-base58==2.1.1
+solana
+solders
+httpx
+psycopg2-binary
+base58
+redis
