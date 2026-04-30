@@ -2,28 +2,32 @@ import os, time, asyncio, threading, sys, signal
 from flask import Flask
 from solana.rpc.async_api import AsyncClient
 
-# --- CONFIG & STATE ---
+# --- CONFIG & OVERLAP ---
 RPC = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 PORT = int(os.environ.get("PORT", 10000))
-SHUTTING_DOWN = False
+IS_ALIVE = True
 
 def log(msg): print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
-# THE 120-SECOND OVERLAP HANDLER
-def handle_exit(signum, frame):
-    global SHUTTING_DOWN
-    log("!!! SIGTERM RECEIVED: STOPPING SCANNER & HOLDING FOR 120S OVERLAP !!!")
-    SHUTTING_DOWN = True  # Immediately stops the scanning loop
-    time.sleep(120)       # Keeps the process alive but idle for the overlap
-    log("!!! OVERLAP EXPIRED: EXITING !!!")
+# THE 120-SECOND OVERLAP LOGIC
+def start_overlap_delay(signum, frame):
+    global IS_ALIVE
+    log("!!! RENDER SIGNAL DETECTED: STARTING 120s OVERLAP DELAY !!!")
+    IS_ALIVE = False  # Stops the scanner logic immediately
+    
+    # This manually holds the process open so the old and new versions overlap
+    time.sleep(120) 
+    
+    log("!!! 120s OVERLAP COMPLETE: TERMINATING OLD INSTANCE !!!")
     sys.exit(0)
 
-signal.signal(signal.SIGTERM, handle_exit)
+# Listen for Render's shutdown signal (SIGTERM)
+signal.signal(signal.SIGTERM, start_overlap_delay)
 
 async def scan_loop():
-    log(f"==> CONNECTING: {RPC}")
+    log(f"==> SCANNER INITIALIZED: {RPC}")
     async with AsyncClient(RPC) as client:
-        while not SHUTTING_DOWN:
+        while IS_ALIVE:
             try:
                 res = await client.get_slot()
                 log(f"SCANNING SLOT: {res.value}")
@@ -31,16 +35,18 @@ async def scan_loop():
             except Exception as e:
                 log(f"SCAN ERROR: {e}")
                 await asyncio.sleep(5)
-        log("==> SCANNER KILLED: STANDING BY DURING TRANSITION...")
+        log("==> SCANNER THREAD STOPPED. HOLDING PROCESS...")
 
 # --- RENDER INFRASTRUCTURE ---
 app = Flask(__name__)
 @app.route('/')
-def health(): return {"status": "SHUTTING_DOWN" if SHUTTING_DOWN else "LIVE"}, 200
+def health(): return "OMNICORE_V6.6_RUNNING", 200
 
 if __name__ == "__main__":
-    log("==> INITIALIZING S.I.P. OMNICORE...")
-    # Start loop in background
+    log("==> BOOTING S.I.P. OMNICORE...")
+    # Start the background scan
     threading.Thread(target=lambda: asyncio.run(scan_loop()), daemon=True).start()
-    log(f"==> BINDING TO PORT {PORT}")
+    
+    log(f"==> WEB SERVER ONLINE ON PORT {PORT}")
+    # debug=False and use_reloader=False are mandatory for signal handling
     app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
