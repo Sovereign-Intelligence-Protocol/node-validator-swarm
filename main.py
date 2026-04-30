@@ -18,7 +18,7 @@ def handoff(s, f):
     global ACTIVE
     log("!!! SIGTERM RECEIVED: 120S TIME LOOP START !!!")
     ACTIVE = False
-    time.sleep(120)  # YOUR ESSENTIAL 120S TIME LOOP
+    time.sleep(120)
     os._exit(0)
 
 signal.signal(signal.SIGTERM, handoff)
@@ -30,12 +30,12 @@ async def core_engine():
             try:
                 res = await client.get_slot()
                 slot = res.value
-                log(f"SCANNING SLOT: {slot}") #
+                log(f"SCANNING SLOT: {slot}")
                 
-                # --- ACTUAL TRADING LOGIC ONLY ---
-                # Place your production Jupiter/Jito execution here
+                # --- JUPITER / JITO PRODUCTION LOGIC ---
+                # Place execution here
                 
-                await asyncio.sleep(2) # 2s SWEET SPOT
+                await asyncio.sleep(2) 
             except Exception as e:
                 log(f"CORE ERROR: {e}")
                 await asyncio.sleep(5)
@@ -45,7 +45,6 @@ app = Flask(__name__)
 def health(): return "OMNICORE_V7.0_STABLE", 200
 
 if __name__ == "__main__":
-    # START BACKGROUND ENGINE
     threading.Thread(target=lambda: asyncio.run(core_engine()), daemon=True).start()
     log(f"==> SERVER STARTING ON PORT {PORT}")
     app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
