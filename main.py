@@ -2,32 +2,33 @@ import os, time, asyncio, threading, sys, signal
 from flask import Flask
 from solana.rpc.async_api import AsyncClient
 
-# --- SYSTEM CONFIG ---
+# --- SYSTEM STATE ---
 RPC = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 PORT = int(os.environ.get("PORT", 10000))
-SCAN_ACTIVE = True 
+STILL_RUNNING = True 
 
 def log(msg): print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
-# --- THE 120-SECOND MANUAL TIME LAPSE ---
-def handle_handoff(signum, frame):
-    global SCAN_ACTIVE
-    log("!!! RENDER SIGNAL: KILLING SCANNER IMMEDIATELY !!!")
-    SCAN_ACTIVE = False  # Instantly stops double-trading/scanning
+# --- THE 120-SECOND MANUAL OVERLAP ---
+def emergency_shutdown(signum, frame):
+    global STILL_RUNNING
+    log("!!! SIGTERM DETECTED: KILLING OLD SCANNER IMMEDIATELY !!!")
+    STILL_RUNNING = False  # This stops the 2-second loop instantly
     
-    log("!!! STARTING MANUAL 120s TIME LAPSE FOR DEPLOYMENT OVERLAP !!!")
-    time.sleep(120)  # The requested manual lapse
+    log("!!! INITIATING MANUAL 120s TIME LAPSE !!!")
+    # This keeps the old process alive but silent for 2 minutes
+    time.sleep(120) 
     
-    log("!!! LAPSE COMPLETE: TERMINATING OLD PROCESS !!!")
-    sys.exit(0)
+    log("!!! LAPSE EXPIRED: EXITING !!!")
+    os._exit(0) # Force exit to bypass any Flask cleanup hangs
 
-# Register the handoff signal
-signal.signal(signal.SIGTERM, handle_handoff)
+# Register shutdown handler immediately at boot
+signal.signal(signal.SIGTERM, emergency_shutdown)
 
 async def scan_loop():
-    log(f"==> BOOTING SCANNER: {RPC}")
+    log(f"==> BOOTING ENGINE: {RPC}")
     async with AsyncClient(RPC) as client:
-        while SCAN_ACTIVE:
+        while STILL_RUNNING:
             try:
                 res = await client.get_slot()
                 log(f"SCANNING SLOT: {res.value}")
@@ -35,17 +36,18 @@ async def scan_loop():
             except Exception as e:
                 log(f"RPC ERROR: {e}")
                 await asyncio.sleep(5)
-        log("==> SCANNER DISENGAGED. STANDING BY FOR HANDOFF WINDOW.")
+        log("==> SCANNER DISENGAGED. OLD INSTANCE NOW IN 120s IDLE PHASE.")
 
-# --- INFRASTRUCTURE ---
+# --- WEB SERVER ---
 app = Flask(__name__)
 @app.route('/')
-def health(): return "OMNICORE_V6.8_ACTIVE", 200
+def health(): return "OMNICORE_V6.9_STABLE", 200
 
 if __name__ == "__main__":
-    # Launch logic in background
-    threading.Thread(target=lambda: asyncio.run(scan_loop()), daemon=True).start()
+    # Start background engine
+    t = threading.Thread(target=lambda: asyncio.run(scan_loop()), daemon=True)
+    t.start()
     
-    log(f"==> WEB SERVER STARTING ON PORT {PORT}")
-    # use_reloader=False is required for signal.signal to work properly
+    log(f"==> WEB SERVER ACTIVE ON PORT {PORT}")
+    # MUST have use_reloader=False for the 120s lapse to work
     app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
