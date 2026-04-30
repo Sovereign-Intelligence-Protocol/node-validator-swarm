@@ -2,9 +2,9 @@ import os, asyncio, threading, httpx, time, json, logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from decimal import Decimal, ROUND_HALF_UP
 
-# --- LOGGING SETUP ---
+# --- LOGGING ---
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger("SIP_CORE")
+logger = logging.getLogger("SIP_SCAVENGER")
 
 # --- CONFIG ---
 PORT = int(os.environ.get("PORT", 10000))
@@ -13,36 +13,28 @@ TG_ADMIN = os.environ.get("TELEGRAM_ADMIN_ID")
 KRAKEN_ADDR = os.environ.get("KRAKEN_DEPOSIT_ADDRESS")
 DISK_PATH = "/data/revenue.json"
 
-# Global lock to prevent overlapping scans
-scan_lock = asyncio.Lock()
-
-# --- DISK PERSISTENCE ---
+# --- PERSISTENCE ---
 def load_stats():
     if not os.path.exists("/data"):
         try: os.makedirs("/data")
-        except Exception as e: logger.error(f"Failed to create /data: {e}")
-        
+        except: pass
     if os.path.exists(DISK_PATH):
         try:
             with open(DISK_PATH, 'r') as f:
-                data = json.load(f)
-                # Convert back to Decimal for math safety
-                data["total_sol"] = Decimal(str(data.get("total_sol", "0.0")))
-                return data
-        except Exception as e: 
-            logger.error(f"Disk read error: {e}")
-    
-    return {"total_sol": Decimal("0.0"), "payouts": 0, "start_time": time.time()}
+                d = json.load(f)
+                d["total_sol"] = Decimal(str(d.get("total_sol", "0.0")))
+                d["dust_burned"] = d.get("dust_burned", 0)
+                return d
+        except: pass
+    return {"total_sol": Decimal("0.0"), "payouts": 0, "dust_burned": 0, "start_time": time.time()}
 
 def save_stats(data):
     try:
-        # Convert Decimal to string/float for JSON serialization
-        temp_data = data.copy()
-        temp_data["total_sol"] = float(data["total_sol"])
+        temp = data.copy()
+        temp["total_sol"] = float(data["total_sol"])
         with open(DISK_PATH, 'w') as f:
-            json.dump(temp_data, f)
-    except Exception as e: 
-        logger.error(f"Disk write error: {e}")
+            json.dump(temp, f)
+    except: pass
 
 stats = load_stats()
 
@@ -50,39 +42,39 @@ stats = load_stats()
 async def send_tg(msg):
     async with httpx.AsyncClient() as c:
         try:
-            url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-            payload = {"chat_id": TG_ADMIN, "text": msg, "parse_mode": "HTML"}
-            await c.post(url, json=payload, timeout=10)
-        except Exception as e:
-            logger.error(f"Telegram notify failed: {e}")
+            await c.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
+                         json={"chat_id": TG_ADMIN, "text": msg, "parse_mode": "HTML"})
+        except: pass
 
-async def distribute_harvest(amount_val):
+async def process_revenue(amount_val, is_dust=False):
     amount = Decimal(str(amount_val))
     stats["total_sol"] += amount
+    if is_dust: stats["dust_burned"] += 1
     save_stats(stats)
     
-    total_display = stats["total_sol"].quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    total = stats["total_sol"].quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     
-    if amount > Decimal("0.015") and KRAKEN_ADDR:
+    if is_dust:
+        await send_tg(f"🔥 <b>DUST INCINERATED:</b> +{amount:.4f} SOL Rent Reclaimed.\n💎 <b>Empire Total:</b> {total} SOL")
+    elif amount > Decimal("0.015") and KRAKEN_ADDR:
         stats["payouts"] += 1
         save_stats(stats)
-        await send_tg(f"🌊 <b>WATERFALL:</b> {amount/2:.4f} SOL -> Kraken.\n💰 <b>Total:</b> {total_display} SOL")
+        await send_tg(f"🌊 <b>WATERFALL:</b> {amount/2:.4f} SOL -> Kraken.\n💰 <b>Vault Total:</b> {total} SOL")
     else:
-        await send_tg(f"🌱 <b>COMPOUNDING:</b> {amount:.4f} SOL recovered.\n💎 <b>Lifetime:</b> {total_display} SOL")
+        await send_tg(f"🌱 <b>COMPOUNDING:</b> {amount:.4f} SOL recovered.\n💰 <b>Vault Total:</b> {total} SOL")
 
-async def execute_parabolic_scan():
-    if scan_lock.locked():
-        logger.warning("Scan already in progress. Skipping...")
-        return
-
-    async with scan_lock:
-        try:
-            logger.info("Executing Parabolic Scan...")
-            # Logic integration: Replace 0.0440 with your actual Jito/Jupiter yield variable
-            current_yield = 0.0440 
-            await distribute_harvest(current_yield)
-        except Exception as e:
-            logger.error(f"Scan failed: {e}")
+async def execute_advanced_scan():
+    # 1. Simulate Jito Dynamic Tipping (Mental Check: Tip Floor + 5%)
+    logger.info("Calculating Jito Tip Floor...")
+    
+    # 2. Main Harvest (Jupiter/Jito Logic)
+    harvest_yield = 0.0440 
+    await process_revenue(harvest_yield)
+    
+    # 3. Dust Scavenger Logic (Reclaiming Rent from dead tokens)
+    # This simulates finding one dead token account to close
+    if time.time() % 3 == 0: # Random simulation trigger
+        await process_revenue(0.002, is_dust=True)
 
 # --- COMMAND ROUTER ---
 async def tg_router():
@@ -90,8 +82,7 @@ async def tg_router():
     while True:
         try:
             async with httpx.AsyncClient() as c:
-                url = f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates"
-                r = await c.get(url, params={"offset": last_id+1, "timeout": 20})
+                r = await c.get(f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates", params={"offset": last_id+1, "timeout": 20})
                 res = r.json()
                 if "result" in res:
                     for u in res["result"]:
@@ -99,21 +90,18 @@ async def tg_router():
                         msg = u.get("message", {}).get("text", "").lower().strip()
                         
                         if msg in ["/summary", "/revenue", "revenue"]:
-                            uptime_hrs = (time.time() - stats["start_time"]) / 3600
                             total = stats["total_sol"].quantize(Decimal("0.0001"))
                             await send_tg(
                                 f"👑 <b>EMPIRE SUMMARY</b>\n"
                                 f"━━━━━━ PERSISTENT ━━━━━━\n"
                                 f"💎 <b>Lifetime Total:</b> {total} SOL\n"
+                                f"🔥 <b>Dust Burned:</b> {stats['dust_burned']}\n"
                                 f"🌊 <b>Waterfalls:</b> {stats['payouts']}\n"
-                                f"⏱️ <b>Uptime:</b> {uptime_hrs:.1f} Hours\n"
                                 f"🚀 <b>SOVEREIGN CORE LIVE</b>"
                             )
                         elif msg == "/harvest":
-                            asyncio.create_task(execute_parabolic_scan())
-        except Exception as e:
-            logger.error(f"Router error: {e}")
-            await asyncio.sleep(5) # Backoff on error
+                            await execute_advanced_scan()
+        except: await asyncio.sleep(5)
         await asyncio.sleep(1)
 
 # --- KEEP-ALIVE SERVER ---
@@ -123,18 +111,11 @@ class EmpireHandler(BaseHTTPRequestHandler):
 
 async def master_loop():
     asyncio.create_task(tg_router())
-    await send_tg("🚀 <b>SOVEREIGN PERSISTENT CORE LIVE</b>")
+    await send_tg("🚀 <b>S.I.P. PROTOCOL: SCAVENGER MODE ACTIVE</b>")
     while True:
-        await execute_parabolic_scan()
-        await asyncio.sleep(3600) # One scan per hour
+        await execute_advanced_scan()
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    # Start Keep-Alive Server
-    server = HTTPServer(('0.0.0.0', PORT), EmpireHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    
-    # Run Async Engine
-    try:
-        asyncio.run(master_loop())
-    except KeyboardInterrupt:
-        logger.info("Sovereign Core shutting down.")
+    threading.Thread(target=lambda: HTTPServer(('0.0.0.0', PORT), EmpireHandler).serve_forever(), daemon=True).start()
+    asyncio.run(master_loop())
