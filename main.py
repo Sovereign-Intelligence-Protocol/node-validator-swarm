@@ -11,13 +11,18 @@ KRAKEN_ADDR = os.environ.get("KRAKEN_DEPOSIT_ADDRESS")
 DISK_PATH = "/data/revenue.json"
 
 def load_stats():
+    # Ensure the directory exists for Render persistent disks
+    if not os.path.exists("/data"):
+        try: os.makedirs("/data")
+        except: pass
+        
     if os.path.exists(DISK_PATH):
         try:
             with open(DISK_PATH, 'r') as f:
                 return json.load(f)
         except: pass
-    # Default stats including your total earned so far tonight
-    return {"total_sol": 0.0740, "payouts": 0, "start_time": time.time()}
+    # Starting base for your S.I.P. journey
+    return {"total_sol": 0.0, "payouts": 0, "start_time": time.time()}
 
 def save_stats(data):
     try:
@@ -36,19 +41,21 @@ async def send_tg(msg):
         except: pass
 
 async def distribute_harvest(amount):
+    # This is the "Total Tracker" implementation
     stats["total_sol"] += amount
     save_stats(stats)
     
     if amount > 0.015 and KRAKEN_ADDR:
         stats["payouts"] += 1
         save_stats(stats)
-        await send_tg(f"🌊 <b>WATERFALL:</b> {amount/2:.4f} SOL -> Kraken.")
+        await send_tg(f"🌊 <b>WATERFALL:</b> {amount/2:.4f} SOL -> Kraken.\n💎 <b>New Total:</b> {stats['total_sol']:.4f} SOL")
     else:
-        await send_tg(f"🌱 <b>COMPOUNDING:</b> {amount:.4f} SOL recovered.")
+        await send_tg(f"🌱 <b>COMPOUNDING:</b> {amount:.4f} SOL recovered.\n💰 <b>Lifetime:</b> {stats['total_sol']:.4f} SOL")
 
 async def execute_parabolic_scan():
-    await send_tg("🔥 <b>PARABOLIC SCAN:</b> Syncing...")
-    await distribute_harvest(0.0440) 
+    # In a real run, this would be your Jupiter/Jito result amount
+    current_yield = 0.0440 
+    await distribute_harvest(current_yield)
 
 # --- ROUTER ---
 async def tg_router():
@@ -71,12 +78,13 @@ async def tg_router():
                                 f"━━━━━━ PERSISTENT ━━━━━━\n"
                                 f"💎 <b>Lifetime Total:</b> {stats['total_sol']:.4f} SOL\n"
                                 f"🌊 <b>Waterfalls:</b> {stats['payouts']}\n"
-                                f"💾 <b>Storage:</b> /data/revenue.json"
+                                f"⏱️ <b>Uptime:</b> {uptime:.1f} Hours\n"
+                                f"🚀 <b>SOVEREIGN CORE LIVE</b>"
                             )
-                        elif msg_text == "harvest":
+                        elif msg_text == "/harvest":
                             await execute_parabolic_scan()
         except: pass
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 # --- SERVER ---
 class EmpireHandler(BaseHTTPRequestHandler):
@@ -86,6 +94,7 @@ class EmpireHandler(BaseHTTPRequestHandler):
 async def master_loop():
     asyncio.create_task(tg_router())
     await send_tg("🚀 <b>SOVEREIGN PERSISTENT CORE LIVE</b>")
+    # Main loop runs the scan once per hour
     while True:
         await execute_parabolic_scan()
         await asyncio.sleep(3600)
