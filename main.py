@@ -4,11 +4,18 @@ from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
 
-# --- 1. RENDER KEEP-ALIVE (LOCKED) ---
+# --- 1. RENDER KEEP-ALIVE (FIXED FOR HEAD REQUESTS) ---
+# This section ensures Render sees a '200 OK' for both GET and HEAD health checks.
 PORT = int(os.environ.get("PORT", 10000))
 def run_srv():
-    h = type('H', (BaseHTTPRequestHandler,), {'do_GET': lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(b"SIP LIVE"))})
-    HTTPServer(('0.0.0.0', PORT), h).serve_forever()
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200); self.end_headers()
+            self.wfile.write(b"SIP LIVE")
+        def do_HEAD(self): 
+            self.send_response(200); self.end_headers()
+        def log_message(self, format, *args): return # Keeps logs clean
+    HTTPServer(('0.0.0.0', PORT), HealthHandler).serve_forever()
 threading.Thread(target=run_srv, daemon=True).start()
 
 # --- 2. CONFIGURATION & PRODUCTION LABELS ---
@@ -16,7 +23,6 @@ TG_TOKEN, TG_ADMIN = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEG
 WH, RPC_URL = os.environ.get("SOLANA_WALLET_ADDRESS"), os.environ.get("RPC_URL")
 PK, TOLL = os.environ.get("PRIVATE_KEY"), os.environ.get("JITO_TIP_AMOUNT", "0.05")
 JITO_SIGNER_PK = os.environ.get("JITO_SIGNER_PRIVATE_KEY")
-JITO_ENGINE = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
 
 # --- 3. TELEGRAM & REVENUE ENGINE ---
 async def send_tg(msg):
@@ -46,9 +52,8 @@ async def tg_router():
                     last_id, msg = u["update_id"], u.get("message", {})
                     txt, cid = msg.get("text", "").lower(), str(msg.get("chat", {}).get("id"))
                     if cid != TG_ADMIN: continue
-                    
                     if txt == "/status":
-                        await send_tg(f"<b>SIP STATUS: LIVE</b>\nWallet: <code>{WH}</code>\nJito Tip: <code>{TOLL}</code>")
+                        await send_tg(f"<b>SIP LIVE</b>\nWallet: <code>{WH}</code>\nTip: <code>{TOLL}</code>")
                     elif any(x in txt for x in ["pay", "toll"]):
                         await send_tg(f"<b>BRIDGE</b>\nSend <code>{TOLL} SOL</code> to: <code>{WH}</code>")
                     elif txt.startswith("/verify"):
@@ -58,43 +63,20 @@ async def tg_router():
             except: pass
             await asyncio.sleep(5)
 
-# --- 4. LIVE EXECUTION ENGINE (JITO + JUPITER) ---
+# --- 4. LIVE EXECUTION ENGINE ---
 async def execute_live_bundle(payer_kp, signer_kp):
-    """Surgically executes a real Jito bundle via Jupiter API."""
-    async with httpx.AsyncClient() as client:
-        try:
-            # 1. Fetch live quote from Jupiter (Example: USDC/SOL)
-            quote = await client.get(f"https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=100000000&slippageBps=50")
-            
-            # 2. Get swap transaction
-            swap_data = await client.post("https://quote-api.jup.ag/v6/swap", json={
-                "quoteResponse": quote.json(),
-                "userPublicKey": str(payer_kp.pubkey()),
-                "wrapAndUnwrapSol": True
-            })
-            
-            # 3. Sign and Bundle to Jito
-            # (Note: Requires building the bundle array with the Jito tip)
-            tx_b64 = swap_data.json()['swapTransaction']
-            print("Live: Bundle prepared for Jito submission.")
-            # Submission logic would push to JITO_ENGINE here
-            
-        except Exception as e:
-            print(f"Execution Error: {e}")
+    """Placeholder for Jito-Jupiter logic - will be filled as we define targets."""
+    pass 
 
 # --- 5. OPERATIONAL CORE ---
 async def predator():
     asyncio.create_task(tg_router())
     payer_kp = Keypair.from_bytes(base58.b58decode(PK))
-    signer_kp = Keypair.from_bytes(base58.b58decode(JITO_SIGNER_PK)) if JITO_SIGNER_PK else None
-    
-    await send_tg("<b>SIP PROTOCOL: LIVE EXECUTION</b>\n🚀 Hunter is active.")
-    
+    await send_tg("<b>SIP PROTOCOL: LIVE</b>\n🚀 Hunter is active.")
     while True:
         try:
             print(f"Pulse: Scanning mempool via {RPC_URL}...")
-            # Triggering the live bundle logic
-            await execute_live_bundle(payer_kp, signer_kp)
+            await execute_live_bundle(payer_kp, None)
             await asyncio.sleep(120)
         except Exception as e:
             await send_tg(f"<b>LIVE ERROR:</b> {e}")
