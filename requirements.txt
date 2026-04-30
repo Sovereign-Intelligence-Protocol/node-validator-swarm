@@ -1,5 +1,5 @@
 solana
 solders
 httpx
-base58
 psycopg2-binary
+base58
