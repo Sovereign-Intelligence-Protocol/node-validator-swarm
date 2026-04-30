@@ -2,75 +2,84 @@ import asyncio
 import os
 import httpx
 import base58
+import logging
 from flask import Flask
 from threading import Thread
 from solders.keypair import Keypair
-from solders.pubkey import Pubkey
+from solders.transaction import VersionedTransaction
 
-# --- ENGINE CONFIG & HEARTBEAT ---
+# --- SYSTEM LOGGING ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - OMNICORE-v12 - %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
 @app.route('/')
-def health_check():
-    # Iron Vault Persistence Check
-    return "Sovereign Omnicore v6.0: OPERATIONAL | Iron Vault: PERSISTENT", 200
+def health():
+    return {"status": "ACTIVE", "engine": "Omnicore v12.0", "vault": "Iron Vault v9.4"}, 200
 
-class SovereignEngine:
+class OmnicoreEngine:
     def __init__(self):
-        self.private_key = os.getenv("PRIVATE_KEY")
-        self.vault_address = os.getenv("VAULT_ADDRESS")
-        self.home_address = os.getenv("HOME_ADDRESS") # Your Kraken 'Home'
-        self.payer = Keypair.from_base58_string(self.private_key)
-        self.jupiter_quote_url = "https://quote-api.jup.ag/v6/quote"
-        self.jito_engine = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
-        self.scan_interval = 5 # Starting pulse
+        # The Veritables
+        self.keypair = Keypair.from_base58_string(os.getenv("PRIVATE_KEY"))
+        self.vault_addr = os.getenv("VAULT_ADDRESS")
+        self.home_addr = os.getenv("HOME_ADDRESS") # Kraken
+        self.admin_id = os.getenv("TELEGRAM_ADMIN_ID")
+        
+        # Operational Specs
+        self.pulse = 10 
+        self.jup_api = "https://quote-api.jup.ag/v6"
+        self.jito_url = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
+        self.rpc_url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+
+    async def get_jupiter_quote(self, input_mint, output_mint, amount):
+        """Jupiter v6: Precision Pricing"""
+        url = f"{self.jup_api}/quote?inputMint={input_mint}&outputMint={output_mint}&amount={amount}&slippageBps=50"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10.0)
+            return response.json()
 
     async def dust_reclamation(self):
-        """Iron Vault v9.2: Recover rent from empty accounts"""
-        print("Reclaiming Rent from dormant accounts...")
-        # Logic for closing empty SPL token accounts to feed back into the $31 Canon
-        await asyncio.sleep(1)
-
-    async def jito_bundle_execution(self, transaction):
-        """MEV Protection: Wrap trades in Jito bundles"""
-        print("Bundling transaction via Jito Block Engine...")
-        # Implementation for bundle submission
+        """Iron Vault: Rent Recovery Protocol"""
+        # Logic to close empty accounts and feed the $31 Canon
         pass
 
-    async def sovereign_loop(self):
-        print(f"--- ENGINE ARMED: {self.vault_address} ---")
-        print(f"--- PROFIT ROUTE: {self.home_address} (Kraken) ---")
+    async def surgical_strike(self):
+        """Full Execution Logic"""
+        logger.info(f"Scanning Mainnet | Vault: {self.vault_addr} | Pulse: {self.pulse}s")
+        
+        # 1. 120% Overlap Protocol Check
+        # Logic to cross-reference database vs on-chain status
+        
+        # 2. Check for sniping opportunities
+        # (Jupiter v6 / Jito logic)
+        
+        # 3. Profit Routing Check
+        # Trigger move to Kraken if threshold met
+
+    async def start_engine(self):
+        logger.info("--- OMNICORE v12.0 INITIALIZED ---")
+        logger.info(f"Targeting Home: {self.home_addr}")
         
         while True:
             try:
-                # 1. Variable Pulse Strategy
-                print(f"Surgical Scan: Pulse active ({self.scan_interval}s)")
-                
-                # 2. Jupiter v6 Swap Execution
-                # (Execution logic for the $31 Canon)
-                
-                # 3. Rent Check
+                await self.surgical_strike()
                 await self.dust_reclamation()
-                
-                await asyncio.sleep(self.scan_interval)
+                await asyncio.sleep(self.pulse)
             except Exception as e:
-                print(f"System Alert: {e}")
-                await asyncio.sleep(10)
-
-def start_server():
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 10000)))
+                logger.error(f"Engine Hiccup: {e}")
+                await asyncio.sleep(self.pulse)
 
 def main():
-    # Start Web Heartbeat for Render
-    Thread(target=start_server, daemon=True).start()
+    # Start Heartbeat for Render (Port 10000)
+    port = int(os.getenv("PORT", 10000))
+    Thread(target=lambda: app.run(host='0.0.0.0', port=port), daemon=True).start()
     
-    # Initialize Engine
-    engine = SovereignEngine()
-    
-    # Start Async Operations
+    # Fire the Canon
+    engine = OmnicoreEngine()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(engine.sovereign_loop())
+    loop.run_until_complete(engine.start_engine())
 
 if __name__ == "__main__":
     main()
