@@ -1,5 +1,6 @@
-flask
-httpx
-base58
-solders
 websockets
+solders
+solana
+httpx
+python-telegram-bot
+psycopg2-binary
