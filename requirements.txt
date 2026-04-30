@@ -3,3 +3,4 @@ solders
 httpx
 psycopg2-binary
 base58
+python-dotenv
