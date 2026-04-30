@@ -1,7 +1,7 @@
 import os, asyncio, json, websockets, httpx
 from solders.keypair import Keypair
 
-# PRODUCTION ENV LABELS - VERIFIED
+# PRODUCTION CONFIG - FINAL V38.0
 RPC_URL = os.getenv("RPC_URL")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PRIVATE_KEY = os.getenv("PRIVATE_KEY")
@@ -13,7 +13,7 @@ async def v38_engine():
     while True:
         try:
             async with websockets.connect(RPC_URL) as ws:
-                print(f"v38.0 IRON VAULT LIVE | Monitoring Logs...")
+                print("v38.0 IRON VAULT LIVE | Connection Established")
                 retries = 0
                 sub = {"jsonrpc":"2.0","id":1,"method":"logsSubscribe","params":[{"mentions":["6EF8rrecth7D..."]}, {"commitment":"processed"}]}
                 await ws.send(json.dumps(sub))
@@ -27,12 +27,13 @@ async def v38_engine():
             retries += 1
 
 async def main():
-    # START THE HEARTBEAT SERVER FIRST - This kills the 502 error
+    # 1. Start the Port 10000 server FIRST to clear the 502 error
+    # This satisfies Render's health check immediately.
     server = await asyncio.start_server(lambda r, w: None, '0.0.0.0', PORT)
     print(f"v38.0 Render Handshake Secured on Port {PORT}")
     
+    # 2. Run the heartbeat server and the engine together
     async with server:
-        # Now run the engine
         await v38_engine()
 
 if __name__ == "__main__":
