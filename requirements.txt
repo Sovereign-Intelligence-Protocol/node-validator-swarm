@@ -4,3 +4,4 @@ solders
 base58
 httpx
 psycopg2-binary
+anchorpy
