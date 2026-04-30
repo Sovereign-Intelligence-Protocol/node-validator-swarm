@@ -4,7 +4,7 @@ from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
 
-# --- 1. RENDER HEALTH CHECK PROTOCOL (PERMANENT FIX) ---
+# --- 1. RENDER HEALTH CHECK PROTOCOL ---
 PORT = int(os.environ.get("PORT", 10000))
 def run_srv():
     class HealthHandler(BaseHTTPRequestHandler):
@@ -12,14 +12,13 @@ def run_srv():
             self.send_response(200); self.end_headers()
             self.wfile.write(b"SIP PROTOCOL LIVE")
         def do_HEAD(self): 
-            # Fixes the 501 Unsupported Method error from your logs
             self.send_response(200); self.end_headers()
         def log_message(self, format, *args): return 
     server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
     server.serve_forever()
 threading.Thread(target=run_srv, daemon=True).start()
 
-# --- 2. CONFIGURATION & PRODUCTION MAPPING ---
+# --- 2. CONFIGURATION ---
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_ADMIN = os.environ.get("TELEGRAM_ADMIN_ID")
 WH = os.environ.get("SOLANA_WALLET_ADDRESS")
@@ -78,11 +77,10 @@ async def predator():
     
     while True:
         try:
-            # LIVE EXECUTION LOGIC START
+            # WORK PHASE
             print("Pulse: Scanning mempool...")
-            # Jito-Jupiter trade logic integration point
             
-            # --- THE 120s DELAY ---
+            # DELAY PHASE (120s Locked)
             await asyncio.sleep(120) 
             
         except Exception as e:
