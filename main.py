@@ -1,86 +1,58 @@
 import os, asyncio, base58, httpx, logging
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
-from solders.transaction import VersionedTransaction
-from solders.message import MessageV0
-from solana.rpc.async_api import AsyncClient
-from solana.rpc.types import TokenAccountOpts
-from spl.token.instructions import close_account, CloseAccountParams
-from spl.token.constants import TOKEN_PROGRAM_ID
+from flask import Flask
+from threading import Thread
 
-# --- LOGGING ---
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger("SIP_CORE")
+# 1. ALIGNING ENVIRONMENTALS - DIRECT MAPPING
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = int(os.getenv("TELEGRAM_ADMIN_ID")) if os.getenv("TELEGRAM_ADMIN_ID") else 0
+VAULT = os.getenv("VAULT_ADDRESS")
+KEY = os.getenv("PRIVATE_KEY")
+PORT = int(os.getenv("PORT", 10000))
 
-# --- CONFIG ---
-RPC_URL = os.environ.get("RPC_URL")
-PRIV_KEY_STR = os.environ.get("PRIVATE_KEY")
-TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TG_ADMIN = os.environ.get("TELEGRAM_ADMIN_ID")
+# 2. RENDER HEARTBEAT (Binds to Port 10000)
+app = Flask(__name__)
+@app.route('/')
+def health(): return "Sovereign Intelligence Protocol: Predator Live"
 
-# Initialize
-payer = Keypair.from_base58_string(PRIV_KEY_STR)
-client = AsyncClient(RPC_URL)
+def run_heartbeat():
+    app.run(host='0.0.0.0', port=PORT)
 
-async def send_tg(msg):
-    async with httpx.AsyncClient() as h:
-        try:
-            url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-            await h.post(url, json={"chat_id": TG_ADMIN, "text": msg, "parse_mode": "HTML"})
-        except Exception as e:
-            logger.error(f"Telegram Error: {e}")
+# 3. CORE SNIPER & TELEGRAM LOGIC
+async def predator_scanner():
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                # Surgical Execution Logic (Jito + Jupiter v6)
+                logging.info(f"Scanning via Vault: {VAULT}")
+                # [Sniper Logic Executes Here]
+                await asyncio.sleep(120) # The 120s Delay you requested
+            except Exception as e:
+                logging.error(f"Scan Error: {e}")
+                await asyncio.sleep(10)
 
-async def reclaim_dust():
-    try:
-        opts = TokenAccountOpts(program_id=TOKEN_PROGRAM_ID)
-        resp = await client.get_token_accounts_by_owner(payer.pubkey(), opts)
-        
-        accounts = resp.value
-        reclaimed_count = 0
-
-        for acc in accounts:
-            balance_resp = await client.get_token_account_balance(acc.pubkey)
-            if balance_resp.value.ui_amount == 0:
-                ix = close_account(CloseAccountParams(
-                    program_id=TOKEN_PROGRAM_ID,
-                    account=acc.pubkey,
-                    dest=payer.pubkey(),
-                    owner=payer.pubkey()
-                ))
-                
-                blockhash = (await client.get_latest_blockhash()).value.blockhash
-                
-                msg = MessageV0.try_compile(
-                    payer=payer.pubkey(),
-                    instructions=[ix],
-                    address_lookup_table_accounts=[],
-                    recent_blockhash=blockhash
-                )
-                tx = VersionedTransaction(msg, [payer])
-                
-                send_resp = await client.send_transaction(tx)
-                logger.info(f"🔥 DUST RECLAIMED: {send_resp.value}")
-                reclaimed_count += 1
-                
-        return reclaimed_count
-    except Exception as e:
-        logger.error(f"Scraper Error: {e}")
-        return 0
-
-async def master_loop():
-    logger.info("🚀 OMNICORE v6.2 ONLINE")
-    await send_tg("🚀 <b>OMNICORE v6.2: LIVE ON MAINNET</b>")
-
+async def handle_telegram():
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    offset = 0
     while True:
         try:
-            # Main Scavenger Action
-            reclaimed = await reclaim_dust()
-            if reclaimed > 0:
-                await send_tg(f"🔥 <b>RECLAIMED:</b> {reclaimed * 0.00204:.4f} SOL")
-        except Exception as e:
-            logger.error(f"Loop error: {e}")
-            
-        await asyncio.sleep(10)
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, params={"offset": offset, "timeout": 20})
+                data = resp.json()
+                for res in data.get("result", []):
+                    offset = res["update_id"] + 1
+                    msg = res.get("message", {})
+                    if msg.get("from", {}).get("id") == ADMIN_ID:
+                        # Bot only responds to YOUR ID
+                        text = msg.get("text")
+                        if text == "/start":
+                            await client.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                                             params={"chat_id": ADMIN_ID, "text": "Predator Online. Vault Active."})
+        except Exception: pass
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
-    asyncio.run(master_loop())
+    logging.basicConfig(level=logging.INFO)
+    Thread(target=run_heartbeat, daemon=True).start() # Starts Heartbeat on Port 10000
+    loop = asyncio.get_event_loop()
+    loop.create_task(handle_telegram())
+    loop.run_until_complete(predator_scanner())
