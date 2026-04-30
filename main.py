@@ -16,11 +16,9 @@ async def v38_omnicore_engine():
             async with websockets.connect(RPC_URL) as ws:
                 print(f"v38.0 IRON VAULT LIVE | Tip: {JITO_TIP}")
                 retries = 0
-                # V38 WHALE-HUNTING SUBSCRIPTION
                 sub = {"jsonrpc":"2.0","id":1,"method":"logsSubscribe","params":[{"mentions":["6EF8rrecth7D..."]}, {"commitment":"processed"}]}
                 await ws.send(json.dumps(sub))
                 async for msg in ws:
-                    # V38 MEV SHIELD + JUPITER V6 SWAP LOGIC
                     if "result" in json.loads(msg): 
                         print("MEV-Shielded Activity Detected...")
         except Exception as e:
@@ -30,12 +28,12 @@ async def v38_omnicore_engine():
             retries += 1
 
 async def main():
-    # Start the server FIRST to clear the 502 Bad Gateway
+    # 1. Start Port 10000 server FIRST to kill the 502 error
     server = await asyncio.start_server(lambda r, w: None, '0.0.0.0', PORT)
     print(f"v38.0 Heartbeat Online on Port {PORT}")
     
+    # 2. Run the engine and server concurrently
     async with server:
-        # Run the engine as a background task
         await v38_omnicore_engine()
 
 if __name__ == "__main__":
@@ -44,4 +42,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
 
-# VERSION 38.0 | OMNICORE S.I.P. | RENDER OPTIMIZED
+# VERSION 38.0 | OMNICORE S.I.P. | 502 GATEWAY PATCH
