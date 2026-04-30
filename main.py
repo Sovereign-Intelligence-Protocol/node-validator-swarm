@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
-# --- 1. RENDER HEALTH CHECK PROTOCOL (PERMANENT FIX) ---
+# --- 1. RENDER HEALTH CHECK ---
 PORT = int(os.environ.get("PORT", 10000))
 def run_srv():
     class HealthHandler(BaseHTTPRequestHandler):
@@ -13,11 +13,10 @@ def run_srv():
         def do_HEAD(self): 
             self.send_response(200); self.end_headers()
         def log_message(self, format, *args): return 
-    server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
-    server.serve_forever()
+    HTTPServer(('0.0.0.0', PORT), HealthHandler).serve_forever()
 threading.Thread(target=run_srv, daemon=True).start()
 
-# --- 2. CONFIGURATION & PRODUCTION MAPPING ---
+# --- 2. CONFIGURATION ---
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_ADMIN = os.environ.get("TELEGRAM_ADMIN_ID")
 WH = os.environ.get("SOLANA_WALLET_ADDRESS")
@@ -25,13 +24,15 @@ RPC_URL = os.environ.get("RPC_URL")
 PK = os.environ.get("PRIVATE_KEY")
 TOLL = os.environ.get("JITO_TIP_AMOUNT", "0.05")
 
-# --- 3. TELEGRAM & REVENUE VERIFICATION ---
+# --- 3. TELEGRAM & TOLL ENGINE ---
 async def send_tg(msg):
     if not TG_TOKEN or not TG_ADMIN: return
     async with httpx.AsyncClient() as c:
-        try: await c.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
+        try: 
+            await c.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
                          json={"chat_id": TG_ADMIN, "text": msg, "parse_mode": "HTML"})
-    except Exception: pass
+        except Exception: 
+            pass
 
 async def verify_rev(sig):
     async with AsyncClient(RPC_URL) as c:
@@ -43,7 +44,8 @@ async def verify_rev(sig):
             idx = [str(k) for k in keys].index(WH)
             val = (meta.post_balances[idx] - meta.pre_balances[idx]) / 10**9
             return (True, f"Received: {val} SOL") if val >= float(TOLL) else (False, f"Low: {val}/{TOLL}")
-        except Exception as e: return False, str(e)
+        except Exception as e: 
+            return False, str(e)
 
 async def tg_router():
     last_id = 0
@@ -65,16 +67,11 @@ async def tg_router():
                         s = txt.split(" ")[1] if " " in txt else ""
                         ok, res = await verify_rev(s)
                         await send_tg(f"{'✅' if ok else '❌'} {res}")
-            except: pass
+            except Exception:
+                await asyncio.sleep(5)
             await asyncio.sleep(5)
 
 # --- 4. THE 120s PREDATOR CORE ---
-async def execute_strategy(payer_kp):
-    """Target: High-conviction New Liquidity pairs."""
-    # Logic is currently set to 'SCAN-ONLY' to preserve your 0.37 SOL 
-    # until a high-probability target is identified.
-    print(f"Pulse: Scanning Helius for new 0.05-0.10 SOL opportunities...")
-
 async def predator():
     asyncio.create_task(tg_router())
     payer_kp = Keypair.from_bytes(base58.b58decode(PK))
@@ -82,8 +79,7 @@ async def predator():
     
     while True:
         try:
-            await execute_strategy(payer_kp)
-            # --- THE 120s PULSE ---
+            print("Pulse: Scanning for high-conviction 0.05 SOL snipes...")
             await asyncio.sleep(120) 
         except Exception as e:
             await send_tg(f"<b>CRITICAL:</b> {e}")
