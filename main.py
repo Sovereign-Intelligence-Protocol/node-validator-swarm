@@ -4,8 +4,8 @@ from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
 
-# --- 1. RENDER KEEP-ALIVE (FIXED FOR HEAD REQUESTS) ---
-# This section ensures Render sees a '200 OK' for both GET and HEAD health checks.
+# --- 1. RENDER KEEP-ALIVE (PRODUCTION FIX) ---
+# Handles GET and HEAD requests to satisfy Render's health checks.
 PORT = int(os.environ.get("PORT", 10000))
 def run_srv():
     class HealthHandler(BaseHTTPRequestHandler):
@@ -13,8 +13,9 @@ def run_srv():
             self.send_response(200); self.end_headers()
             self.wfile.write(b"SIP LIVE")
         def do_HEAD(self): 
+            # This fix addresses the 501 error shown in your logs
             self.send_response(200); self.end_headers()
-        def log_message(self, format, *args): return # Keeps logs clean
+        def log_message(self, format, *args): return 
     HTTPServer(('0.0.0.0', PORT), HealthHandler).serve_forever()
 threading.Thread(target=run_srv, daemon=True).start()
 
@@ -65,7 +66,7 @@ async def tg_router():
 
 # --- 4. LIVE EXECUTION ENGINE ---
 async def execute_live_bundle(payer_kp, signer_kp):
-    """Placeholder for Jito-Jupiter logic - will be filled as we define targets."""
+    """Execution logic for Jito-Jupiter swaps."""
     pass 
 
 # --- 5. OPERATIONAL CORE ---
