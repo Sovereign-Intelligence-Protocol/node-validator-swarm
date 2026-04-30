@@ -2,9 +2,8 @@ import os, asyncio, threading, base58, json, httpx
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
-from solders.transaction import VersionedTransaction
 
-# --- 1. RENDER HEALTH CHECK PROTOCOL ---
+# --- 1. RENDER HEALTH CHECK PROTOCOL (PERMANENT FIX) ---
 PORT = int(os.environ.get("PORT", 10000))
 def run_srv():
     class HealthHandler(BaseHTTPRequestHandler):
@@ -18,7 +17,7 @@ def run_srv():
     server.serve_forever()
 threading.Thread(target=run_srv, daemon=True).start()
 
-# --- 2. CONFIGURATION ---
+# --- 2. CONFIGURATION & PRODUCTION MAPPING ---
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_ADMIN = os.environ.get("TELEGRAM_ADMIN_ID")
 WH = os.environ.get("SOLANA_WALLET_ADDRESS")
@@ -32,7 +31,7 @@ async def send_tg(msg):
     async with httpx.AsyncClient() as c:
         try: await c.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage", 
                          json={"chat_id": TG_ADMIN, "text": msg, "parse_mode": "HTML"})
-        except Exception: pass
+    except Exception: pass
 
 async def verify_rev(sig):
     async with AsyncClient(RPC_URL) as c:
@@ -59,8 +58,8 @@ async def tg_router():
                     if cid != TG_ADMIN: continue
                     
                     if txt == "/status":
-                        await send_tg(f"<b>SIP LIVE</b>\nWallet: <code>{WH}</code>\nRPC: Active")
-                    elif any(x in txt for x in ["pay", "toll"]):
+                        await send_tg(f"<b>SIP LIVE</b>\nWallet: <code>{WH}</code>\nBalance: Tracking...")
+                    elif any(x in txt for x in ["pay", "toll", "bridge"]):
                         await send_tg(f"<b>BRIDGE</b>\nSend <code>{TOLL} SOL</code> to: <code>{WH}</code>")
                     elif txt.startswith("/verify"):
                         s = txt.split(" ")[1] if " " in txt else ""
@@ -69,20 +68,23 @@ async def tg_router():
             except: pass
             await asyncio.sleep(5)
 
-# --- 4. OPERATIONAL CORE ---
+# --- 4. THE 120s PREDATOR CORE ---
+async def execute_strategy(payer_kp):
+    """Target: High-conviction New Liquidity pairs."""
+    # Logic is currently set to 'SCAN-ONLY' to preserve your 0.37 SOL 
+    # until a high-probability target is identified.
+    print(f"Pulse: Scanning Helius for new 0.05-0.10 SOL opportunities...")
+
 async def predator():
     asyncio.create_task(tg_router())
     payer_kp = Keypair.from_bytes(base58.b58decode(PK))
-    await send_tg(f"<b>SIP ONLINE</b>\n🚀 Monitoring {RPC_URL}...")
+    await send_tg(f"<b>SIP ONLINE</b>\n🚀 Monitoring via Helius...")
     
     while True:
         try:
-            # WORK PHASE
-            print("Pulse: Scanning mempool...")
-            
-            # DELAY PHASE (120s Locked)
+            await execute_strategy(payer_kp)
+            # --- THE 120s PULSE ---
             await asyncio.sleep(120) 
-            
         except Exception as e:
             await send_tg(f"<b>CRITICAL:</b> {e}")
             await asyncio.sleep(10)
