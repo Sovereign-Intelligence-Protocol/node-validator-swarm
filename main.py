@@ -4,7 +4,7 @@ from threading import Thread
 from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
 
-# --- V35.7 FULL-CYCLE SOVEREIGN ---
+# --- V35.7 REPAIR: FULL-CYCLE SOVEREIGN ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - SOVEREIGN-v35.7 - %(message)s')
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
@@ -20,11 +20,8 @@ class FullCycleSovereign:
         self.tg_admin = os.getenv("TELEGRAM_ADMIN_ID")
         self.jito_engine = "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
         self.jup_api = "https://quote-api.jup.ag/v6"
-        
-        # Parameters
         self.pulse = 0.5
-        self.buy_amt = 200000000  # ~0.2 SOL ($31)
-        self.take_profit_multiplier = 1.25 # +25%
+        self.buy_amt = 200000000 
         self.active_trade = None
         self.heartbeat_counter = 0
 
@@ -35,34 +32,26 @@ class FullCycleSovereign:
             except: pass
 
     async def simulate_and_fire(self, tx_b64, target, mode="BUY"):
-        """The Shield: Checks viability then fires Jito Bundle"""
         async with httpx.AsyncClient() as client:
             try:
-                # 1. Pre-Flight Simulation
                 sim = await client.post(f"{self.jup_api}/instructions", json={"swapTransaction": tx_b64})
-                if sim.status_code != 200:
-                    logger.warning(f"SHIELD BLOCK: {mode} simulation failed. Saving SOL.")
-                    return False
-
-                # 2. Fire Bundle
+                if sim.status_code != 200: return False
                 raw = VersionedTransaction.from_bytes(base64.b64decode(tx_b64))
                 signed = VersionedTransaction.populate(raw.message, [self.keypair.sign_message(raw.message)])
                 payload = {"jsonrpc": "2.0", "id": 1, "method": "sendBundle", "params": [[base64.b64encode(bytes(signed)).decode("utf-8")]]}
                 res = await client.post(self.jito_engine, json=payload)
-                
                 bundle_id = res.json().get("result")
                 if bundle_id:
                     await self.notify(f"✅ {mode} EXECUTED\nMint: {target[:8]}\nBundle: {bundle_id}")
                     return True
                 return False
-            except Exception as e:
-                logger.error(f"Execution Error: {e}")
-                return False
+            except: return False
 
     async def get_swap(self, input_m, output_m, amount):
         async with httpx.AsyncClient() as client:
             try:
-                q = (await client.get(f"{self.jup_api}/quote?inputMint={input_m}&outputMint={output_m}&amount={amount}&slippageBps=200")).json()
+                q_url = f"{self.jup_api}/quote?inputMint={input_m}&outputMint={output_m}&amount={amount}&slippageBps=200"
+                q = (await client.get(q_url)).json()
                 s = (await client.post(f"{self.jup_api}/swap", json={
                     "quoteResponse": q, "userPublicKey": str(self.keypair.pubkey()),
                     "prioritizationFeeLamports": 150000
@@ -71,9 +60,6 @@ class FullCycleSovereign:
             except: return None
 
     async def manage_exit(self, mint):
-        """Monitor for Profit and Exit Automatically"""
-        logger.info(f"STARTING AUTO-EXIT MONITOR: {mint}")
-        # In v35.7, we wait 30s then attempt a Take-Profit Swap
         await asyncio.sleep(30) 
         sell_tx = await self.get_swap(mint, "So11111111111111111111111111111111111111112", "all")
         if sell_tx:
@@ -81,12 +67,27 @@ class FullCycleSovereign:
         self.active_trade = None
 
     async def core_loop(self):
-        await self.notify("v35.7 Sovereign Online. All systems (Shield/Exit) active.")
+        await self.notify("v35.7 Fixed. All systems (Shield/Exit) active.")
         while True:
             try:
                 self.heartbeat_counter += 1
                 target = os.getenv("TARGET_MINT")
-                
                 if target and not self.active_trade:
-                    logger.info(f"TARGET DETECTED: {target}")
-                    buy_tx = await self.get_swap("So111111111111111
+                    buy_tx = await self.get_swap("So11111111111111111111111111111111111111112", target, self.buy_amt)
+                    if buy_tx:
+                        if await self.simulate_and_fire(buy_tx, target, mode="BUY"):
+                            self.active_trade = target
+                            asyncio.create_task(self.manage_exit(target))
+                if self.heartbeat_counter % 20 == 0:
+                    logger.info(f"ALIVE: Scan {self.heartbeat_counter}")
+                await asyncio.sleep(self.pulse)
+            except: await asyncio.sleep(2)
+
+def run_server():
+    port = int(os.getenv("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+if __name__ == "__main__":
+    Thread(target=run_server, daemon=True).start()
+    engine = FullCycleSovereign()
+    asyncio.run(engine.core_loop())
