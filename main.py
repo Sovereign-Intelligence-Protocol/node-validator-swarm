@@ -1,35 +1,46 @@
-import os, time, asyncio, threading, httpx
+import os, time, asyncio, threading, sys, signal
 from flask import Flask
 from solana.rpc.async_api import AsyncClient
 
-# 1. IMMEDIATE STARTUP LOG
-print("==> SYSTEM BOOT: S.I.P. OMNICORE V6.2")
-
+# --- CONFIG & STATE ---
 RPC = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 PORT = int(os.environ.get("PORT", 10000))
+SHUTTING_DOWN = False
 
-async def scan_logic():
-    print(f"==> CONNECTING TO RPC: {RPC}")
+def log(msg): print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+# THE 120-SECOND OVERLAP HANDLER
+def handle_exit(signum, frame):
+    global SHUTTING_DOWN
+    log("!!! SIGTERM RECEIVED: STOPPING SCANNER & HOLDING FOR 120S OVERLAP !!!")
+    SHUTTING_DOWN = True  # Immediately stops the scanning loop
+    time.sleep(120)       # Keeps the process alive but idle for the overlap
+    log("!!! OVERLAP EXPIRED: EXITING !!!")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_exit)
+
+async def scan_loop():
+    log(f"==> CONNECTING: {RPC}")
     async with AsyncClient(RPC) as client:
-        while True:
+        while not SHUTTING_DOWN:
             try:
                 res = await client.get_slot()
-                print(f"!!! [SUCCESS] SLOT: {res.value} !!!")
+                log(f"SCANNING SLOT: {res.value}")
                 await asyncio.sleep(2)
             except Exception as e:
-                print(f"!!! [RPC ERROR]: {e} !!!")
+                log(f"SCAN ERROR: {e}")
                 await asyncio.sleep(5)
+        log("==> SCANNER KILLED: STANDING BY DURING TRANSITION...")
 
-def worker():
-    asyncio.run(scan_logic())
-
-# 2. START THE ENGINE BEFORE THE WEB SERVER
-threading.Thread(target=worker, daemon=True).start()
-
+# --- RENDER INFRASTRUCTURE ---
 app = Flask(__name__)
 @app.route('/')
-def health(): return "ACTIVE", 200
+def health(): return {"status": "SHUTTING_DOWN" if SHUTTING_DOWN else "LIVE"}, 200
 
 if __name__ == "__main__":
-    print(f"==> STARTING WEB SERVER ON PORT {PORT}")
-    app.run(host='0.0.0.0', port=PORT)
+    log("==> INITIALIZING S.I.P. OMNICORE...")
+    # Start loop in background
+    threading.Thread(target=lambda: asyncio.run(scan_loop()), daemon=True).start()
+    log(f"==> BINDING TO PORT {PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
