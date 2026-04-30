@@ -3,25 +3,27 @@ from flask import Flask
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
-# --- LIVE PRODUCTION LABELS ---
+# --- VERIFIED DASHBOARD LABELS ---
 RPC = os.getenv("RPC_URL")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID") # <--- FIXED: Pulls your actual ID
+ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
 KEY = Keypair.from_base58_string(os.getenv("PRIVATE_KEY"))
-WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
+WALLET = os.getenv("SOLANA_WALLET_ADDRESS", "N/A")
 TIP = os.getenv("JITO_TIP_AMOUNT", "0.001")
-THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.85")
-KRAKEN = os.getenv("KRAKEN_DEPOSIT_ADDRESS")
 PORT, ACTIVE = int(os.environ.get("PORT", 10000)), True
 
 def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
 async def notify(m):
-    if TOKEN and ADMIN_ID: # <--- FIXED: Validates both exist
+    if not TOKEN or not ADMIN_ID:
+        log("TELEGRAM ERROR: Missing TOKEN or ADMIN_ID in dashboard")
+        return
+    try:
         async with httpx.AsyncClient() as c:
-            url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-            payload = {"chat_id": ADMIN_ID, "text": f"OMNICORE: {m}"}
-            await c.post(url, json=payload)
+            res = await c.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                               json={"chat_id": ADMIN_ID, "text": f"OMNICORE: {m}"})
+            if res.status_code != 200: log(f"TELEGRAM FAIL: {res.text}")
+    except Exception as e: log(f"NOTIFY ERROR: {e}")
 
 def handoff(s, f):
     global ACTIVE
@@ -34,13 +36,13 @@ signal.signal(signal.SIGTERM, handoff)
 
 async def core_engine():
     log(f"==> OMNICORE V35.7 LIVE | WALLET: {WALLET[:6]}")
-    await notify(f"Engine Armed on Slot Scanning.") # <--- Test message on startup
+    await notify("Engine Armed. Scanning Mainnet Slots.")
     async with AsyncClient(RPC) as client:
         while ACTIVE:
             try:
                 res = await client.get_slot()
-                slot = res.value
-                log(f"SCANNING SLOT: {slot}")
+                log(f"SCANNING SLOT: {res.value}")
+                # Production Jup/Jito logic here
                 await asyncio.sleep(2) 
             except Exception as e:
                 log(f"CORE ERROR: {e}")
