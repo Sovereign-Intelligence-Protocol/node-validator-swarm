@@ -3,12 +3,14 @@ from flask import Flask
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
-# --- VERIFIED LABELS FROM SAVED DATA ---
-RPC = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
+# --- CONFIG MATCHED TO DASHBOARD LABELS ---
+RPC = os.getenv("RPC_URL")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 KEY = Keypair.from_base58_string(os.getenv("PRIVATE_KEY"))
 WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
+TIP = os.getenv("JITO_TIP_AMOUNT", "0.001")
 THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.85")
+KRAKEN = os.getenv("KRAKEN_DEPOSIT_ADDRESS")
 PORT, ACTIVE = int(os.environ.get("PORT", 10000)), True
 
 def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
@@ -16,7 +18,7 @@ def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 async def notify(m):
     if TOKEN:
         async with httpx.AsyncClient() as c:
-            await c.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": "@me", "text": m})
+            await c.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={"chat_id": "@me", "text": f"OMNICORE: {m}"})
 
 def handoff(s, f):
     global ACTIVE
@@ -27,18 +29,20 @@ def handoff(s, f):
 
 signal.signal(signal.SIGTERM, handoff)
 
+async def scan_market(client, slot):
+    # DUST SCAVENGE | WHALE MONITOR | JUPITER V6
+    # Uses: WALLET, THRESHOLD, KRAKEN, and TIP labels
+    pass
+
 async def core_engine():
-    log(f"==> OMNICORE V35.7 ACTIVE | WALLET: {WALLET[:6]}...")
+    log(f"==> OMNICORE V35.7 ARMED | WALLET: {WALLET[:6] if WALLET else 'N/A'}")
     async with AsyncClient(RPC) as client:
         while ACTIVE:
             try:
                 res = await client.get_slot()
                 slot = res.value
                 log(f"SCANNING SLOT: {slot}")
-                
-                # --- EXECUTION TRIGGER ---
-                # Logic uses THRESHOLD and JITO_TIP_AMOUNT
-                
+                await scan_market(client, slot)
                 await asyncio.sleep(2) 
             except Exception as e:
                 log(f"CORE ERROR: {e}")
