@@ -2,3 +2,4 @@ flask
 httpx
 base58
 solders
+websockets
