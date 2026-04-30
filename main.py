@@ -2,7 +2,7 @@ import os, time, asyncio, threading, sys, signal, httpx
 from flask import Flask
 from solana.rpc.async_api import AsyncClient
 
-# --- CONFIG ---
+# --- ESSENTIALS ---
 RPC = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PORT, ACTIVE = int(os.environ.get("PORT", 10000)), True
@@ -16,9 +16,9 @@ async def notify(m):
 
 def handoff(s, f):
     global ACTIVE
-    log("!!! SIGTERM: KILLING SCANNER | 120S LAPSE START !!!")
+    log("!!! SIGTERM RECEIVED: 120S TIME LOOP START !!!")
     ACTIVE = False
-    time.sleep(120)
+    time.sleep(120)  # YOUR ESSENTIAL 120S TIME LOOP
     os._exit(0)
 
 signal.signal(signal.SIGTERM, handoff)
@@ -32,11 +32,10 @@ async def core_engine():
                 slot = res.value
                 log(f"SCANNING SLOT: {slot}")
                 
-                # --- JUPITER / JITO LOGIC ---
-                # Check for opportunities, build Jito bundle, and execute
-                # if opportunity: await notify(f"Trade Executed at Slot {slot}")
+                # --- JUPITER / JITO LOGIC EXECUTION ---
+                # Your specific trading logic goes here
                 
-                await asyncio.sleep(2) 
+                await asyncio.sleep(2) # 2s SCAN RHYTHM
             except Exception as e:
                 log(f"CORE ERROR: {e}")
                 await asyncio.sleep(5)
