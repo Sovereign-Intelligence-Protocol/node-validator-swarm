@@ -1,48 +1,47 @@
 import os, time, asyncio, threading, httpx
 from flask import Flask
-from solders.keypair import Keypair
 from solana.rpc.async_api import AsyncClient
 
-# --- ENVIRONMENT SETUP ---
+# --- CONFIG ---
 RPC = os.getenv("RPC_URL", "https://api.mainnet-beta.solana.com")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-KEY = os.getenv("PRIVATE_KEY")
 PORT = int(os.environ.get("PORT", 10000))
 
 app = Flask(__name__)
 @app.route('/')
-def health(): return "OMNICORE_V6_LIVE", 200
+def health(): return "S.I.P. OMNICORE V6.1 LIVE", 200
 
-async def telegram_alert(msg):
+async def telegram_log(msg):
     if TOKEN:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         async with httpx.AsyncClient() as client:
             await client.post(url, json={"chat_id": "@me", "text": msg})
 
-async def main_loop():
-    print("==> S.I.P. OMNICORE: System Initialized")
+async def scan_logic():
+    print("==> SYSTEM START: INITIALIZING SCANNER...")
     async with AsyncClient(RPC) as client:
         while True:
             try:
-                # 2-SECOND SCAN LOGIC
+                # 2-SECOND TARGET SCAN
                 res = await client.get_slot()
-                slot = res.value
-                print(f"[{time.strftime('%H:%M:%S')}] SCANNING SLOT: {slot}")
+                print(f"[{time.strftime('%H:%M:%S')}] OMNICORE SCANNING SLOT: {res.value}")
                 
-                # INTEGRATE JUPITER / JITO BUNDLE LOGIC HERE
-                # if target_found: await telegram_alert(f"Trade Executed: {slot}")
-
+                # YOUR MEV / JITO BUNDLE LOGIC HERE
+                
                 await asyncio.sleep(2)
             except Exception as e:
                 print(f"CORE ERROR: {e}")
                 await asyncio.sleep(5)
 
-def run_back():
+def background_worker():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(main_loop())
+    loop.run_until_complete(scan_logic())
 
 if __name__ == "__main__":
-    # Launch logic in background thread to prevent Render blocking
-    threading.Thread(target=run_back, daemon=True).start()
+    # START SCANNER IN BACKGROUND
+    threading.Thread(target=background_worker, daemon=True).start()
+    
+    # START RENDER WEB SERVER
+    print(f"==> BINDING TO PORT {PORT}")
     app.run(host='0.0.0.0', port=PORT)
