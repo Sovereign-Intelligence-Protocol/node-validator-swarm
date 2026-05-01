@@ -21,31 +21,33 @@ const CONFIG = {
     KEY: process.env.PRIVATE_KEY,
     PORT: process.env.PORT || 10000,
     MIN_PROFIT: 0.05,
-    SLIPPAGE: 50
+    SLIPPAGE: 50,
+    HEARTBEAT: 60000
 };
 
-// Polling fix: Force immediate connection reset
-const bot = new TelegramBot(CONFIG.TOKEN, { 
-    polling: { 
-        autoStart: true,
-        params: { timeout: 10 } 
-    } 
-});
+if (!CONFIG.TOKEN || !CONFIG.KEY) {
+    console.error("FATAL: Environment Mapping Failed.");
+    process.exit(1);
+}
 
-const connection = new Connection(CONFIG.RPC, { commitment: 'confirmed' });
+const bot = new TelegramBot(CONFIG.TOKEN, { polling: { interval: 300, params: { timeout: 10 } } });
+const connection = new Connection(CONFIG.RPC, { commitment: 'confirmed', confirmTransactionInitialTimeout: 60000 });
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
+const JITO_ENGINE = 'https://mainnet.block-engine.jito.wtf/api/v1/bundles';
 
 const VAULT = {
+    logs: [],
     async broadcast(level, msg) {
         const out = `[${level}] ${new Date().toLocaleTimeString()}: ${msg}`;
         console.log(out);
-        if (CONFIG.CHAT) {
-            await bot.sendMessage(CONFIG.CHAT, `Omnicore v12.4: ${out}`).catch(e => console.error("Broadcast Error:", e.message));
+        if (['STRIKE', 'SYSTEM', 'STATUS'].includes(level)) {
+            await bot.sendMessage(CONFIG.CHAT, `Omnicore v12.4: ${out}`).catch(() => {});
         }
     }
 };
 
 let activeHunt = true;
+let lastStrike = Date.now();
 
 async function executeTrade(quote) {
     try {
@@ -56,51 +58,74 @@ async function executeTrade(quote) {
             dynamicComputeUnitLimit: true,
             prioritizationFeeLamports: 'auto'
         });
+
         const vTx = VersionedTransaction.deserialize(Buffer.from(swapResponse.data.swapTransaction, 'base64'));
+        const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+        vTx.message.recentBlockhash = latestBlockhash.blockhash;
         vTx.sign([wallet]);
-        const res = await axios.post('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+        
+        const res = await axios.post(JITO_ENGINE, {
             jsonrpc: "2.0", id: 1, method: "sendBundle",
             params: [[bs58.encode(vTx.serialize())]]
         });
-        if (res.data.result) await VAULT.broadcast('STRIKE', `Trade ID: ${res.data.result}`);
-    } catch (err) { console.error("Trade Logic Error"); }
+
+        if (res.data.result) {
+            await VAULT.broadcast('STRIKE', `Trade Confirmed: ${res.data.result}`);
+            lastStrike = Date.now();
+        }
+    } catch (err) { 
+        await VAULT.broadcast('ERROR', `Execution Failed: ${err.message}`); 
+    }
 }
 
 async function stalk() {
+    await VAULT.broadcast('SYSTEM', 'Omnicore v12.4: Predator Mode Engaged.');
     while (true) {
         if (activeHunt) {
             try {
                 const response = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
-                const pools = response.data?.slice(0, 5);
-                for (const pool of pools) {
-                    const qUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=${CONFIG.SLIPPAGE}`;
-                    const quote = await axios.get(qUrl);
-                    if (quote.data && parseFloat(quote.data.outAmount) > 110000000) await executeTrade(quote.data);
+                const pools = response.data?.slice(0, 15);
+                if (pools) {
+                    for (const pool of pools) {
+                        const qUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=${CONFIG.SLIPPAGE}`;
+                        const quote = await axios.get(qUrl);
+                        if (quote.data && parseFloat(quote.data.outAmount) > 110000000) {
+                            await executeTrade(quote.data);
+                        }
+                    }
                 }
-            } catch (e) { }
+            } catch (e) { 
+                if (e.response?.status === 429) await new Promise(r => setTimeout(r, 2000));
+            }
         }
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 1000));
     }
 }
 
-bot.onText(/\/status/, (msg) => {
-    bot.sendMessage(msg.chat.id, `v12.4 LIVE\nHunt: ${activeHunt}\nUptime: ${Math.floor(process.uptime()/60)}m`);
+bot.onText(/\/status/, async (msg) => {
+    const bal = await connection.getBalance(wallet.publicKey);
+    bot.sendMessage(msg.chat.id, `OMNICORE v12.4 STATUS\nHunting: ${activeHunt}\nBalance: ${bal/1e9} SOL\nUptime: ${Math.floor(process.uptime()/60)}m`);
 });
 
-bot.on('polling_error', (error) => {
-    if (error.code === 'ETELEGRAM' && error.message.includes('401')) {
-        console.error("CRITICAL: Telegram Token Rejected. Check Render Environment Variables.");
-    }
-});
+bot.onText(/\/on/, () => { activeHunt = true; VAULT.broadcast('STATUS', 'HUNTING ACTIVE'); });
+bot.onText(/\/off/, () => { activeHunt = false; VAULT.broadcast('STATUS', 'HUNTING PAUSED'); });
 
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end('ALIVE');
+    res.end('OMNICORE_V12_4_ALIVE');
 }).listen(CONFIG.PORT);
+
+process.on('SIGTERM', () => {
+    bot.stopPolling();
+    setTimeout(() => process.exit(0), 1000);
+});
 
 async function main() {
     await VAULT.broadcast('SYSTEM', 'Sovereign Command Online.');
-    stalk();
+    await stalk();
 }
 
-main();
+main().catch(err => {
+    console.error(err);
+    process.exit(1);
+});
