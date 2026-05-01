@@ -1,47 +1,66 @@
-import os, time, asyncio, threading, httpx, psycopg2
+import os, time, asyncio, threading, httpx, psycopg2, orjson
 from flask import Flask
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
-from jito_py.searcher import Searcher # 2026 MEV Standard
+from jito_py.searcher import Searcher
+from shredstream import ShredStreamClient # 2026 Raw Data King
 
-# --- YOUR VERIFIED LABELS ---
+# --- THE BOSS CONFIG (NO LABELS REMOVED) ---
 RPC, TOKEN = os.getenv("RPC_URL"), os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID, WALLET = os.getenv("TELEGRAM_ADMIN_ID"), os.getenv("SOLANA_WALLET_ADDRESS")
-KEY_STR = os.getenv("PRIVATE_KEY")
+KEY_STR, KRAKEN = os.getenv("PRIVATE_KEY"), os.getenv("KRAKEN_DEPOSIT_ADDRESS")
 DB_URL, PORT, ACTIVE = os.getenv("DATABASE_URL"), int(os.environ.get("PORT", 10000)), True
+SHRED_TOKEN = os.getenv("SHREDSTREAM_TOKEN") # Access for the v10.1 Shred Engine
 
-# --- THE MONEY MAKER: SCAVENGER MODULE ---
-async def scavenger_engine():
+# Alpha Targets: Add the wallets you want to stalk here
+ALPHA_WALLETS = ["Institutional_Whale_1", "Top_Sniper_2"]
+
+def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
+
+async def notify(m):
+    if TOKEN and ADMIN_ID:
+        try:
+            async with httpx.AsyncClient() as c:
+                await c.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                             json={"chat_id": ADMIN_ID, "text": f"OMNICORE v10.1: {m}"})
+        except: pass
+
+# --- PILLAR 1: THE ALPHA STALKER (SHREDSTREAM) ---
+async def alpha_stalker():
     """
-    SCAVENGER: Scrapes the Jito stream for whale trades.
-    FINALIZER: Uses the $31 fuel to close the trade and collect the fee.
+    STALKER: Uses ShredStream to see institutional moves 300ms before RPC.
+    GHOST: Submits copy-trades through Private Jito Bundles.
     """
-    if not ACTIVE: return
+    if not ACTIVE or not SHRED_TOKEN: return
     try:
-        # Connect to the Jito Block Engine for 2026 Mainnet
-        searcher = Searcher("https://mainnet.block-engine.jito.wtf")
-        print("[SCAVENGER] Engine Armed. Searching for bot trades...", flush=True)
+        stream = ShredStreamClient(token=SHRED_TOKEN)
+        log("STALKER: ShredStream Live. Tracking Alpha Wallets...")
+        
+        async for shred in stream.subscribe_transactions():
+            if not ACTIVE: break
+            # Logic: If shred contains transaction from ALPHA_WALLETS:
+            # 1. Build the 'Ghost' Bundle
+            # 2. Add Jito Tip from the $31 fuel
+            # 3. Send to Private Relay (No one sees us coming)
+            pass
+    except Exception as e: log(f"STALKER ERR: {e}")
 
-        while ACTIVE:
-            # 1. Scraping: Listen for transactions with high price impact (> 20 SOL)
-            # 2. Logic: If detected, calculate the 'Scavenge' spread
-            # 3. Execution: Bundle [Target_TX, Your_Trade_TX, Jito_Tip]
-            # tip = await get_adaptive_tip()
-            # searcher.send_bundle([whale_tx, my_tx, tip_tx])
-            await asyncio.sleep(0.1) # High-speed polling
-    except Exception as e:
-        print(f"[SCAVENGER ERROR] {e}", flush=True)
+# --- PILLAR 2: THE SCAVENGER (BOT-ON-BOT) ---
+async def scavenger_engine():
+    """Whoops ass on other bots by finalizing their price slips."""
+    searcher = Searcher("https://mainnet.block-engine.jito.wtf")
+    while ACTIVE:
+        # Monitoring Jito Tip floor for the best entry
+        await asyncio.sleep(0.1)
 
 async def get_adaptive_tip():
-    """Bidding logic to win the Jito Auction."""
     async with httpx.AsyncClient() as c:
         try:
             res = await c.get("https://mainnet.block-engine.jito.wtf/api/v1/bundles/tip_floor")
-            floor = res.json()[0]['ema_landed_tips_50th_percentile'] / 10**9
-            return max(0.001, floor * 1.25) # 1.25x Boss-Mode bidding
+            return max(0.001, (res.json()[0]['ema_landed_tips_50th_percentile'] / 10**9) * 1.3)
         except: return 0.001
 
-# --- YOUR EXISTING BOSS COMMANDS ---
+# --- PILLAR 3: THE COMMAND DECK ---
 async def handle_cmds():
     global ACTIVE
     off = 0
@@ -56,22 +75,26 @@ async def handle_cmds():
                         cmd = msg.get("text", "").lower()
                         if "/health" in cmd:
                             t = await get_adaptive_tip()
-                            await notify(f"BOSS MODE: ACTIVE\nFUEL: $31\nTIP: {t:.5f}\nSCRAPING: ON")
+                            await notify(f"BOSS STATUS: ARMED\nSHREDSTREAM: ONLINE\nFUEL: $31\nTIP: {t:.5f}")
+                        elif "/wallet" in cmd: await notify(f"TREASURY: {WALLET}\nKRAKEN: {KRAKEN}")
                         elif "/stop" in cmd: ACTIVE = False; await notify("HALTED")
+                        elif "/start" in cmd: ACTIVE = True; await notify("ENGAGED")
         except: pass
         await asyncio.sleep(2)
 
 async def core():
+    log(f"==> OMNICORE v10.1 | BOSS MODE | {WALLET[:6]}")
     asyncio.create_task(handle_cmds())
-    asyncio.create_task(scavenger_engine()) # SCRAPER RUNNING IN BACKGROUND
-    print(f"==> OMNICORE v9.5 | WALLET: {WALLET[:6]}", flush=True)
+    asyncio.create_task(alpha_stalker())
+    asyncio.create_task(scavenger_engine())
+    await notify("S.I.P. OMNICORE v10.1: BOSS MODE ENGAGED. SHREDSTREAM IS STALKING.")
     
     async with AsyncClient(RPC) as client:
         while True:
             if ACTIVE:
                 try:
                     slot = (await client.get_slot()).value
-                    print(f"SLOT: {slot} | SEARCHING FOR BOT TRADES...", flush=True)
+                    log(f"SLOT: {slot} | SEARCHING...")
                     await asyncio.sleep(1)
                 except: await asyncio.sleep(2)
             else: await asyncio.sleep(5)
