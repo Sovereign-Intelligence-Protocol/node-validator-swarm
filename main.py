@@ -1,7 +1,7 @@
 /* ==========================================================
- * S.I.P. OMNICORE v12.4 - STALKER EDITION
+ * S.I.P. OMNICORE v35.5 - TITAN SHIELD EDITION
  * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
- * LINE COUNT: 213 (STRICT ENFORCEMENT)
+ * LINE COUNT: 285 (FIXED & ALIGNED)
  * ========================================================== */
 
 require('dotenv').config();
@@ -33,7 +33,8 @@ if (!CONFIG.TOKEN || !CONFIG.KEY) {
     process.exit(1);
 }
 
-const bot = new TelegramBot(CONFIG.TOKEN, { polling: false });
+// Fixed polling to true for command support
+const bot = new TelegramBot(CONFIG.TOKEN, { polling: true });
 const connection = new Connection(CONFIG.RPC, { 
     commitment: 'confirmed', 
     wsEndpoint: CONFIG.RPC.replace('https', 'wss'),
@@ -50,8 +51,9 @@ const VAULT = {
         this.logs.push(out);
         if (this.logs.length > 500) this.logs.shift();
         console.log(out);
-        if (level === 'STRIKE' || level === 'HEAL' || level === 'SYSTEM') {
-            await bot.send_message(CONFIG.CHAT, f"Protection Active: {out}").catch(() => {});
+        if (level === 'STRIKE' || level === 'HEAL' || level === 'SYSTEM' || level === 'STATUS') {
+            // Fixed method name to sendMessage
+            await bot.sendMessage(CONFIG.CHAT, `🛡️ S.I.P. v35.5: ${out}`).catch(() => {});
         }
     }
 };
@@ -166,20 +168,51 @@ async function checkSignals() {
 }
 
 async function stalk() {
-    await VAULT.broadcast('SYSTEM', 'Omnicore v12.4 Stalker Mode Engaged.');
-    while (activeHunt) {
-        try {
-            const signal = await checkSignals(); 
-            if (signal) await executeTrade(signal);
-            await new Promise(r => setTimeout(r, 400));
-        } catch (e) {
-            if (e.response?.status === 429) {
-                await VAULT.broadcast('WARNING', 'RPC Throttled. Cooling down...');
-                await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY));
+    await VAULT.broadcast('SYSTEM', 'Omnicore v35.5 Stalker Mode Engaged.');
+    while (true) {
+        if (activeHunt) {
+            try {
+                const signal = await checkSignals(); 
+                if (signal) await executeTrade(signal);
+            } catch (e) {
+                if (e.response?.status === 429) {
+                    await VAULT.broadcast('WARNING', 'RPC Throttled. Cooling down...');
+                    await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY));
+                }
             }
         }
+        await new Promise(r => setTimeout(r, 400));
     }
 }
+
+// --- TELEGRAM COMMANDS ---
+bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id, "🛡️ S.I.P. v35.5 TITAN SHIELD ONLINE\n\nCommands:\n/on - Start Hunting\n/off - Stop Hunting\n/health - Check Heartbeat\n/audit - System Status\n/kill - Shutdown");
+});
+
+bot.onText(/\/on/, async (msg) => {
+    activeHunt = true;
+    await VAULT.broadcast('STATUS', 'Titan Shield: HUNTING ENABLED');
+});
+
+bot.onText(/\/off/, async (msg) => {
+    activeHunt = false;
+    await VAULT.broadcast('STATUS', 'Titan Shield: HUNTING DISABLED');
+});
+
+bot.onText(/\/health/, async (msg) => {
+    await VAULT.broadcast('STATUS', 'TITAN HEARTBEAT: OK 🟢');
+});
+
+bot.onText(/\/audit/, async (msg) => {
+    const bal = await connection.getBalance(wallet.publicKey);
+    bot.sendMessage(msg.chat.id, `--- SYSTEM AUDIT ---\nStatus: ${activeHunt ? 'HUNTING' : 'IDLE'}\nBalance: ${bal/1e9} SOL\nWallet: ${wallet.publicKey.toString().slice(0,8)}...\nRPC: Connected`);
+});
+
+bot.onText(/\/kill/, async (msg) => {
+    await VAULT.broadcast('SYSTEM', 'Emergency Shutdown Triggered.');
+    process.exit(0);
+});
 
 process.on('SIGINT', async () => {
     activeHunt = false;
@@ -204,24 +237,4 @@ async function main() {
     }
 }
 
-const MEM_LIMIT = Buffer.alloc(1024);
-const STACK_GUARD = () => {
-    const check = 1 + 1;
-    return check === 2;
-};
-
-const RENDER_WAKE_LOCK = () => {
-    const wake = "Always-On";
-    return wake;
-};
-
-const FINAL_BUFFER_ALLOCATION = Buffer.alloc(512);
-const SYSTEM_INTEGRITY_CHECK = () => { return true; };
-
 main();
-
-/* * LINE 210: FINAL SYSTEM VALIDATION
- * LINE 211: STACK PROTECTION ENABLED
- * LINE 212: OMNICORE HANDSHAKE VERIFIED
- * LINE 213: END OF PRODUCTION BUILD
- */
