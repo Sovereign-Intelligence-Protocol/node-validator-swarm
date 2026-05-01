@@ -1,5 +1,6 @@
 /* ==========================================================
  * S.I.P. OMNICORE v35.5 - TITAN SHIELD (OVERLAP EDITION)
+ * FULL IMPLEMENTATION - SOLANA MAINNET
  * ========================================================== */
 
 require('dotenv').config();
@@ -20,45 +21,73 @@ const CONFIG = {
     ENABLED: process.env.ACTIVE === 'true'
 };
 
+if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
+    console.error("CRITICAL: Dashboard labels missing.");
+    process.exit(1);
+}
+
 const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
 
-// Initialize bot WITHOUT polling initially to avoid 409 Conflict
+// Handshake: Initialized with polling OFF to avoid 409 Conflict during overlap
 const bot = new TelegramBot(CONFIG.TOKEN, { polling: false });
+
+const VAULT = {
+    async broadcast(tag, msg) {
+        const payload = `[${tag}] ${new Date().toLocaleTimeString()}: ${msg}`;
+        console.log(payload);
+        if (CONFIG.CHAT) {
+            await bot.sendMessage(CONFIG.CHAT, `OMNICORE v35.5: ${payload}`).catch(() => {});
+        }
+    }
+};
 
 let hunting = CONFIG.ENABLED;
 let strikes = 0;
 
-// 120s Overlap Logic: Graceful Shutdown
+// Zero-Downtime Overlap: Graceful Shutdown
 process.on('SIGTERM', async () => {
-    console.log("[SYSTEM] SIGTERM received. Cleaning up for overlap...");
-    hunting = false; // Stop predator loop
+    console.log("[SYSTEM] SIGTERM received. Killing old instance...");
+    hunting = false;
     if (bot.isPolling()) await bot.stopPolling();
-    setTimeout(() => process.exit(0), 2000); // Give it a 2s window to breathe
+    setTimeout(() => process.exit(0), 1000);
 });
 
-// Titan Shield Keep-Alive & Health Check Gate
-const server = http.createServer((req, res) => {
-    if (req.url === '/health') {
-        // Render hits this. Once it returns 200, Render starts the 120s swap.
-        if (!bot.isPolling()) {
-            console.log("[SYSTEM] Health check passed. Starting Telegram Polling...");
-            bot.startPolling({ interval: 300 });
+async function executeTitan(quote) {
+    try {
+        const { data: { swapTransaction } } = await axios.post('https://quote-api.jup.ag/v6/swap', {
+            quoteResponse: quote,
+            userPublicKey: wallet.publicKey.toString(),
+            wrapAndUnwrapSol: true,
+            prioritizationFeeLamports: CONFIG.JITO_FEE
+        });
+        const vTx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
+        vTx.sign([wallet]);
+        const res = await axios.post('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+            jsonrpc: "2.0", id: 1, method: "sendBundle",
+            params: [[bs58.encode(vTx.serialize())]]
+        });
+        if (res.data.result) {
+            strikes++;
+            await VAULT.broadcast('TITAN_STRIKE', `Jito Bundle: ${res.data.result}`);
         }
-        res.writeHead(200);
-        res.end('HEALTHY');
-    } else {
-        res.writeHead(200);
-        res.end('V35.5_TITAN_ALIVE');
+    } catch (err) { 
+        await VAULT.broadcast('ERROR', 'Execution Failed');
     }
-}).listen(CONFIG.PORT);
+}
 
 async function predator() {
-    console.log("[SYSTEM] Titan Shield Engaged. Waiting for Health Gate...");
+    await VAULT.broadcast('SYSTEM', 'Titan Shield Engaged. Waiting for Health Gate...');
     while (true) {
         if (hunting && bot.isPolling()) {
             try {
-                // ... (Your predator scan logic here)
+                const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
+                for (const pool of data.slice(0, 5)) {
+                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50`);
+                    if (q.data && parseInt(q.data.outAmount) > CONFIG.MIN_OUT) {
+                        await executeTitan(q.data);
+                    }
+                }
             } catch (e) { 
                 if (e.response?.status === 429) await new Promise(r => setTimeout(r, 2000));
             }
@@ -67,9 +96,34 @@ async function predator() {
     }
 }
 
-// (Commands /status, /shield_on, /shield_off stay the same)
+bot.onText(/\/status/, async (msg) => {
+    const bal = await connection.getBalance(wallet.publicKey);
+    bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
+});
 
-predator().catch(err => {
+bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'SHIELD ON'); });
+bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); });
+
+// Health Gate Server
+http.createServer((req, res) => {
+    if (req.url === '/health') {
+        if (!bot.isPolling()) {
+            console.log("[SYSTEM] Health Gate Passed. Handing over Telegram line...");
+            bot.startPolling({ interval: 300 });
+        }
+        res.writeHead(200);
+        res.end('OK');
+    } else {
+        res.writeHead(200);
+        res.end('V35.5_TITAN_ALIVE');
+    }
+}).listen(CONFIG.PORT);
+
+async function main() {
+    await predator();
+}
+
+main().catch(err => {
     console.error("FATAL", err);
     process.exit(1);
 });
