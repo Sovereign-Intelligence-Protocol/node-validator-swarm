@@ -10,9 +10,10 @@ grpcio
 grpcio-tools
 jito-py
 python-dotenv
-shredstream-sdk-python
+# Professional Install: Use direct git links if PyPI fails
+git+https://github.com/triton-one/yellowstone-grpc.git#subdirectory=yellowstone-grpc-python
+git+https://github.com/jito-labs/shredstream-sdk-python.git
 orjson
-ray
 tenacity
 apscheduler-ng
 diskcache
