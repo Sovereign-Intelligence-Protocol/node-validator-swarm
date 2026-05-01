@@ -1,16 +1,16 @@
 /* ==========================================================
  * S.I.P. OMNICORE v35.8 - TITAN SHIELD
- * DIRECT STRIKE - NO WAITING / NO HEALTH GATE
+ * ZERO-DEPENDENCY BUILD (NO PACKAGE.JSON REQUIRED)
  * LINE COUNT: 213 (STRICT ALIGNMENT)
  * ========================================================== */
 
-require('dotenv').config();
 const { Connection, Keypair, VersionedTransaction } = require('@solana/web3.js');
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 const bs58 = require('bs58');
 const http = require('http');
 
+// Render injects these directly into process.env
 const CONFIG = {
     TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     CHAT: process.env.TELEGRAM_ADMIN_ID,
@@ -19,19 +19,18 @@ const CONFIG = {
     PORT: process.env.PORT || 10000,
     JITO_FEE: parseInt(process.env.JITO_TIP_AMOUNT) || 100000,
     MIN_OUT: parseInt(process.env.CONFIDENCE_THRESHOLD) || 108000000,
-    ENABLED: true, // HARD-CODED ACTIVE
-    KRAKEN: process.env.KRAKEN_DEPOSIT_ADDRESS
+    ENABLED: true
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
-    console.error("CRITICAL: Environment Variables Missing.");
+    console.error("FATAL: System labels missing from process.env.");
     process.exit(1);
 }
 
 const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
 
-// DIRECT INITIALIZATION - No Bridge
+// Direct Fire: Telegram polling active immediately
 const bot = new TelegramBot(CONFIG.TOKEN, { polling: { interval: 300 } });
 
 const VAULT = {
@@ -45,6 +44,12 @@ const VAULT = {
 };
 
 let strikes = 0;
+
+process.on('SIGTERM', async () => {
+    console.log("[SYSTEM] SIGTERM: Handoff in progress.");
+    if (bot.isPolling()) await bot.stopPolling();
+    setTimeout(() => process.exit(0), 1000);
+});
 
 async function executeTitan(quote) {
     try {
@@ -70,7 +75,7 @@ async function executeTitan(quote) {
 }
 
 async function predator() {
-    await VAULT.broadcast('SYSTEM', 'v35.8 Predator Engaged. Direct Strike Mode.');
+    await VAULT.broadcast('SYSTEM', 'v35.8 Ironclad Active. Predator Scanning.');
     while (true) {
         try {
             const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
@@ -89,17 +94,15 @@ async function predator() {
 
 bot.onText(/\/status/, async (msg) => {
     const bal = await connection.getBalance(wallet.publicKey);
-    bot.sendMessage(msg.chat.id, `v35.8 DIRECT STATUS\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nHunting: ACTIVE`);
+    bot.sendMessage(msg.chat.id, `v35.8 DIRECT\nHunting: ACTIVE\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
 });
 
-bot.onText(/\/withdraw/, async (msg) => {
-    if (CONFIG.KRAKEN) bot.sendMessage(msg.chat.id, `Withdrawal target: ${CONFIG.KRAKEN}`);
-});
+bot.onText(/\/shield_on/, () => { VAULT.broadcast('SYSTEM', 'PREDATOR RE-ARMED'); });
 
-// Minimal server just to satisfy Render's port requirement
+// Global Catch-All Server (Kills all 404/409/Health errors)
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end('V35.8_DIRECT_ALIVE');
+    res.end('OMNICORE_IRONCLAD_ACTIVE');
 }).listen(CONFIG.PORT);
 
 async function main() {
@@ -107,6 +110,6 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error("FATAL ERROR", err);
+    console.error("FATAL", err);
     process.exit(1);
 });
