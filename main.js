@@ -1,7 +1,7 @@
 /* ==========================================================
- * S.I.P. OMNICORE v12.4 - IRONCLAD BUILD
+ * S.I.P. OMNICORE v35.8 - TITAN SHIELD
  * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
- * LINE COUNT: 213 (STRICT OPERATIONAL DENSITY)
+ * LINE COUNT: 213 (STRICT ALIGNMENT)
  * ========================================================== */
 
 require('dotenv').config();
@@ -24,7 +24,7 @@ const CONFIG = {
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
-    console.error("CRITICAL: Label Mismatch. Deployment Aborted.");
+    console.error("CRITICAL: Dashboard labels missing. Check Render Env.");
     process.exit(1);
 }
 
@@ -37,7 +37,7 @@ const VAULT = {
         const payload = `[${tag}] ${new Date().toLocaleTimeString()}: ${msg}`;
         console.log(payload);
         if (CONFIG.CHAT) {
-            await bot.sendMessage(CONFIG.CHAT, `OMNICORE v12.4: ${payload}`).catch(() => {});
+            await bot.sendMessage(CONFIG.CHAT, `OMNICORE v35.8: ${payload}`).catch(() => {});
         }
     }
 };
@@ -46,7 +46,7 @@ let hunting = CONFIG.ENABLED;
 let strikes = 0;
 
 process.on('SIGTERM', async () => {
-    VAULT.broadcast('SYSTEM', 'SIGTERM: Handoff initiated.');
+    console.log("[SYSTEM] SIGTERM received. Closing Toll Bridge...");
     hunting = false;
     if (bot.isPolling()) await bot.stopPolling();
     setTimeout(() => process.exit(0), 1500);
@@ -58,29 +58,25 @@ async function executeTitan(quote) {
             quoteResponse: quote,
             userPublicKey: wallet.publicKey.toString(),
             wrapAndUnwrapSol: true,
-            prioritizationFeeLamports: CONFIG.JITO_FEE,
-            dynamicComputeUnitLimit: true
+            prioritizationFeeLamports: CONFIG.JITO_FEE
         });
-
         const vTx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
         vTx.sign([wallet]);
-
         const res = await axios.post('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
             jsonrpc: "2.0", id: 1, method: "sendBundle",
             params: [[bs58.encode(vTx.serialize())]]
         });
-
         if (res.data.result) {
             strikes++;
-            await VAULT.broadcast('STRIKE', `Jito Execution: ${res.data.result}`);
+            await VAULT.broadcast('TITAN_STRIKE', `Jito Bundle: ${res.data.result}`);
         }
     } catch (err) { 
-        await VAULT.broadcast('ERROR', 'Atomic Bundle Rejected');
+        await VAULT.broadcast('ERROR', 'Execution Rejected by Block Engine');
     }
 }
 
 async function predator() {
-    await VAULT.broadcast('SYSTEM', 'Ironclad Predator Engaged. Waiting for Bridge...');
+    await VAULT.broadcast('SYSTEM', 'v35.8 Predator Engaged. Waiting for Bridge...');
     while (true) {
         if (hunting && bot.isPolling()) {
             try {
@@ -102,37 +98,30 @@ async function predator() {
 bot.onText(/\/status/, async (msg) => {
     try {
         const bal = await connection.getBalance(wallet.publicKey);
-        bot.sendMessage(msg.chat.id, `v12.4 IRONCLAD\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nBridge: ${bot.isPolling() ? 'OPEN' : 'CLOSED'}`);
+        bot.sendMessage(msg.chat.id, `v35.8 IRONCLAD STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nBridge: ${bot.isPolling() ? 'OPEN' : 'CLOSED'}`);
     } catch (e) {
-        bot.sendMessage(msg.chat.id, "Status Timeout.");
+        bot.sendMessage(msg.chat.id, "Status Check Failed: RPC Timeout.");
     }
 });
 
-bot.onText(/\/shield_on/, () => { 
-    hunting = true; 
-    VAULT.broadcast('SYSTEM', 'PREDATOR LOOP ACTIVE'); 
-});
+bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'PREDATOR LOOP ACTIVE'); });
+bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'PREDATOR LOOP STANDBY'); });
 
-bot.onText(/\/shield_off/, () => { 
-    hunting = false; 
-    VAULT.broadcast('SYSTEM', 'PREDATOR LOOP STANDBY'); 
-});
-
-bot.onText(/\/extract/, async (msg) => {
-    if (CONFIG.KRAKEN) bot.sendMessage(msg.chat.id, `Withdrawal Path: ${CONFIG.KRAKEN}`);
+bot.onText(/\/withdraw/, async (msg) => {
+    if (CONFIG.KRAKEN) bot.sendMessage(msg.chat.id, `Withdrawal target: ${CONFIG.KRAKEN}`);
 });
 
 http.createServer((req, res) => {
     if (req.url === '/health') {
         if (!bot.isPolling()) {
-            console.log("[SYSTEM] Bridge Open. Initializing Polling...");
+            console.log("[SYSTEM] Toll Bridge Passed. Predator Mode.");
             bot.startPolling({ interval: 300 });
         }
         res.writeHead(200);
-        res.end('V12.4_IRONCLAD_HEALTHY');
+        res.end('OK');
     } else {
         res.writeHead(200);
-        res.end('S.I.P. OMNICORE_ALIVE');
+        res.end('V35.8_TITAN_ALIVE');
     }
 }).listen(CONFIG.PORT);
 
@@ -141,6 +130,6 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error("FATAL", err);
+    console.error("FATAL ERROR", err);
     process.exit(1);
 });
