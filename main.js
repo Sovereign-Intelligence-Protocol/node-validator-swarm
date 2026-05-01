@@ -1,6 +1,6 @@
 /* ==========================================================
  * S.I.P. OMNICORE v35.8 - TITAN SHIELD
- * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
+ * DIRECT STRIKE - NO WAITING / NO HEALTH GATE
  * LINE COUNT: 213 (STRICT ALIGNMENT)
  * ========================================================== */
 
@@ -19,18 +19,20 @@ const CONFIG = {
     PORT: process.env.PORT || 10000,
     JITO_FEE: parseInt(process.env.JITO_TIP_AMOUNT) || 100000,
     MIN_OUT: parseInt(process.env.CONFIDENCE_THRESHOLD) || 108000000,
-    ENABLED: process.env.ACTIVE === 'true',
+    ENABLED: true, // HARD-CODED ACTIVE
     KRAKEN: process.env.KRAKEN_DEPOSIT_ADDRESS
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
-    console.error("CRITICAL: Dashboard labels missing. Check Render Env.");
+    console.error("CRITICAL: Environment Variables Missing.");
     process.exit(1);
 }
 
 const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
-const bot = new TelegramBot(CONFIG.TOKEN, { polling: false });
+
+// DIRECT INITIALIZATION - No Bridge
+const bot = new TelegramBot(CONFIG.TOKEN, { polling: { interval: 300 } });
 
 const VAULT = {
     async broadcast(tag, msg) {
@@ -42,15 +44,7 @@ const VAULT = {
     }
 };
 
-let hunting = CONFIG.ENABLED;
 let strikes = 0;
-
-process.on('SIGTERM', async () => {
-    console.log("[SYSTEM] SIGTERM received. Closing Toll Bridge...");
-    hunting = false;
-    if (bot.isPolling()) await bot.stopPolling();
-    setTimeout(() => process.exit(0), 1500);
-});
 
 async function executeTitan(quote) {
     try {
@@ -71,58 +65,41 @@ async function executeTitan(quote) {
             await VAULT.broadcast('TITAN_STRIKE', `Jito Bundle: ${res.data.result}`);
         }
     } catch (err) { 
-        await VAULT.broadcast('ERROR', 'Execution Rejected by Block Engine');
+        await VAULT.broadcast('ERROR', 'Execution Rejected');
     }
 }
 
 async function predator() {
-    await VAULT.broadcast('SYSTEM', 'v35.8 Predator Engaged. Waiting for Bridge...');
+    await VAULT.broadcast('SYSTEM', 'v35.8 Predator Engaged. Direct Strike Mode.');
     while (true) {
-        if (hunting && bot.isPolling()) {
-            try {
-                const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
-                for (const pool of data.slice(0, 5)) {
-                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50&onlyDirectRoutes=true`);
-                    if (q.data && parseInt(q.data.outAmount) > CONFIG.MIN_OUT) {
-                        await executeTitan(q.data);
-                    }
+        try {
+            const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
+            for (const pool of data.slice(0, 5)) {
+                const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50&onlyDirectRoutes=true`);
+                if (q.data && parseInt(q.data.outAmount) > CONFIG.MIN_OUT) {
+                    await executeTitan(q.data);
                 }
-            } catch (e) { 
-                if (e.response?.status === 429) await new Promise(r => setTimeout(r, 2000));
             }
+        } catch (e) { 
+            if (e.response?.status === 429) await new Promise(r => setTimeout(r, 2000));
         }
         await new Promise(r => setTimeout(r, 1000));
     }
 }
 
 bot.onText(/\/status/, async (msg) => {
-    try {
-        const bal = await connection.getBalance(wallet.publicKey);
-        bot.sendMessage(msg.chat.id, `v35.8 IRONCLAD STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nBridge: ${bot.isPolling() ? 'OPEN' : 'CLOSED'}`);
-    } catch (e) {
-        bot.sendMessage(msg.chat.id, "Status Check Failed: RPC Timeout.");
-    }
+    const bal = await connection.getBalance(wallet.publicKey);
+    bot.sendMessage(msg.chat.id, `v35.8 DIRECT STATUS\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nHunting: ACTIVE`);
 });
-
-bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'PREDATOR LOOP ACTIVE'); });
-bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'PREDATOR LOOP STANDBY'); });
 
 bot.onText(/\/withdraw/, async (msg) => {
     if (CONFIG.KRAKEN) bot.sendMessage(msg.chat.id, `Withdrawal target: ${CONFIG.KRAKEN}`);
 });
 
+// Minimal server just to satisfy Render's port requirement
 http.createServer((req, res) => {
-    if (req.url === '/health') {
-        if (!bot.isPolling()) {
-            console.log("[SYSTEM] Toll Bridge Passed. Predator Mode.");
-            bot.startPolling({ interval: 300 });
-        }
-        res.writeHead(200);
-        res.end('OK');
-    } else {
-        res.writeHead(200);
-        res.end('V35.8_TITAN_ALIVE');
-    }
+    res.writeHead(200);
+    res.end('V35.8_DIRECT_ALIVE');
 }).listen(CONFIG.PORT);
 
 async function main() {
