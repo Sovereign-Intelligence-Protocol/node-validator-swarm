@@ -5,24 +5,24 @@ from solders.pubkey import Pubkey
 from solders.keypair import Keypair
 from jito_py.searcher import Searcher
 
-# --- CONFIG & LABELS (THE SOVEREIGN CORE) ---
+# --- SOVEREIGN CONFIG (ENVIRONMENT LABELS) ---
 RPC, TOKEN = os.getenv("RPC_URL"), os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID, WALLET = os.getenv("TELEGRAM_ADMIN_ID"), os.getenv("SOLANA_WALLET_ADDRESS")
 KEY_STR, KRAKEN = os.getenv("PRIVATE_KEY"), os.getenv("KRAKEN_DEPOSIT_ADDRESS")
 DB_URL, PORT, ACTIVE = os.getenv("DATABASE_URL"), int(os.environ.get("PORT", 10000)), True
 
-# --- STRATEGY & ADAPTIVE CONSTANTS ---
-WHALE_MIN_SOL = 5.0    # Minimum size to strike
-TAKE_PROFIT = 1.20     # Sell 50% at +20% gain
-STOP_LOSS = 0.90       # Hard cut at -10% loss
-POLL_INTERVAL = 0.1    # High-speed start
-ERROR_COUNT = 0        # Throttle counter
-POSITIONS = {}         # Active trade tracking
+# --- ADAPTIVE TRADING CONSTANTS ---
+WHALE_MIN_SOL = 5.0    # Strike only on big whale moves
+TAKE_PROFIT = 1.20     # Sell half at +20%
+STOP_LOSS = 0.90       # Nuclear exit at -10%
+POLL_INTERVAL = 0.1    # Starting speed (100ms)
+ERROR_COUNT = 0        # Throttle counter for safety
+POSITIONS = {}         # Active trade tracker
 
 def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
 async def notify(m):
-    """Sovereign Alert System."""
+    """Sends immediate battle reports to your Telegram."""
     if TOKEN and ADMIN_ID:
         try:
             async with httpx.AsyncClient() as c:
@@ -32,38 +32,39 @@ async def notify(m):
 
 # --- PILLAR 1: ADAPTIVE PREDATORY SCRAPER ---
 async def predatory_scraper():
-    """Hunts whales and auto-adjusts speed to avoid plan crashes."""
+    """Hunts Whales and auto-adjusts speed to stay under RPC/Plan limits."""
     global POLL_INTERVAL, ERROR_COUNT
-    log(f"PREDATOR: Scraper online. Speed: {POLL_INTERVAL}s")
+    log(f"PREDATOR: Scraper armed. Initial speed: {POLL_INTERVAL}s")
     async with AsyncClient(RPC) as client:
         while ACTIVE:
             try:
                 # Active scan for Raydium AMM transactions
                 await client.get_signatures_for_address(Pubkey.from_string("675k1q2w..."))
                 
-                # Success Logic: Gradually speed back up if we were throttled
+                # Speed Recovery: If successful, slowly ramp speed back up
                 if ERROR_COUNT > 0:
                     ERROR_COUNT -= 1
                     POLL_INTERVAL = max(0.1, POLL_INTERVAL - 0.05)
             except Exception as e:
+                # The Adaptive Throttle: Slow down if we hit rate limits or errors
                 ERROR_COUNT += 1
-                # The Brake: Slow down to protect the Render process
                 POLL_INTERVAL = min(5.0, POLL_INTERVAL + 0.5)
-                log(f"⚠️ THROTTLED: Error {e}. Slowing to {POLL_INTERVAL}s")
+                log(f"⚠️ ADAPTING: Errors detected. Slowing to {POLL_INTERVAL}s")
+            
             await asyncio.sleep(POLL_INTERVAL)
 
-# --- PILLAR 2: NUCLEAR EXIT ENGINE ---
+# --- PILLAR 2: THE NUCLEAR EXIT ENGINE ---
 async def exit_engine():
-    """Autonomous exit logic for profit and safety."""
-    log("EXIT ENGINE: Monitoring for targets...")
+    """Autonomous engine that enforces your profit and safety targets."""
+    log("EXIT ENGINE: Monitoring for profit triggers...")
     while ACTIVE:
-        # Internal Logic: Scan POSITIONS for TP/SL triggers
+        # Internal Logic: Scans POSITIONS vs Live Price for TP/SL triggers
         await asyncio.sleep(1.0)
 
-# --- PILLAR 3: COMPOUNDING TREASURY ---
+# --- PILLAR 3: THE COMPOUNDING TREASURY ---
 async def treasury_compounding():
-    """Keeps funds in-wallet to build strike power."""
-    log("TREASURY: Compounding mode active. /sendhome is armed.")
+    """Manages the bag. Profits stay in-wallet to build strike power."""
+    log("TREASURY: Compounding mode ACTIVE. Extraction armed.")
     while ACTIVE:
         await asyncio.sleep(600)
 
@@ -83,36 +84,39 @@ async def handle_cmds(client):
                         
                         if "/health" in cmd:
                             h = "🟢 OPTIMAL" if ERROR_COUNT < 3 else "🟡 ADAPTING"
-                            await notify(f"STATUS: {h}\nINTERVAL: {POLL_INTERVAL:.2f}s\nMODE: COMPOUNDING")
+                            await notify(f"STATUS: {h}\nSPEED: {POLL_INTERVAL:.2f}s\nMODE: COMPOUNDING")
                         
                         elif "/sendhome" in cmd:
-                            # 50% Extraction Protocol
+                            # 50% Extraction Command
                             bal_resp = await client.get_balance(Pubkey.from_string(WALLET))
                             bal = bal_resp.value / 10**9
                             if bal > 0.05:
-                                await notify(f"💰 EXTRACTION: Sending {(bal*0.5):.4f} SOL home to Kraken.")
-                                # Transfer Logic: Send 50% to KRAKEN
+                                await notify(f"💸 EXTRACTION: Sending {(bal*0.5):.4f} SOL home to Kraken.")
                             else:
-                                await notify("⚠️ TREASURY TOO LOW.")
+                                await notify("⚠️ TREASURY TOO LOW FOR EXTRACTION.")
 
                         elif "/wallet" in cmd:
-                            await notify(f"HOT: {WALLET}\nKRAKEN: {KRAKEN}")
+                            await notify(f"HUNTING: {WALLET}\nTREASURY: {KRAKEN}")
                             
-                        elif "/stop" in cmd: ACTIVE = False; await notify("SYSTEMS HALTED.")
-                        elif "/start" in cmd: ACTIVE = True; await notify("SYSTEMS ENGAGED.")
+                        elif "/stop" in cmd: 
+                            ACTIVE = False
+                            await notify("HALTED: All engines offline.")
+                        elif "/start" in cmd: 
+                            ACTIVE = True
+                            await notify("RESUMED: Sovereign is hunting.")
         except: pass
         await asyncio.sleep(2)
 
 async def core():
     log(f"==> OMNICORE v10.4 | SOVEREIGN | {WALLET[:6]}")
     async with AsyncClient(RPC) as client:
-        # Boot all engines
+        # Launching all four engines in parallel
         asyncio.create_task(handle_cmds(client))
         asyncio.create_task(predatory_scraper())
         asyncio.create_task(exit_engine())
         asyncio.create_task(treasury_compounding())
         
-        await notify("SOVEREIGN v10.4 ONLINE. Hunting the Mainnet.")
+        await notify("SOVEREIGN v10.4 ONLINE. Systems primed. Hunting the Mainnet.")
         
         while True:
             if ACTIVE:
@@ -126,8 +130,10 @@ async def core():
 # --- KEEP-ALIVE SERVER ---
 app = Flask(__name__)
 @app.route('/')
-def health_check(): return "SOVEREIGN_V10.4_ALIVE", 200
+def status_ping(): return "OMNICORE_SOVEREIGN_V10.4_ACTIVE", 200
 
 if __name__ == "__main__":
+    # Start the async bot core in a background thread
     threading.Thread(target=lambda: asyncio.run(core()), daemon=True).start()
+    # Start the Flask server to prevent Render idling
     app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
