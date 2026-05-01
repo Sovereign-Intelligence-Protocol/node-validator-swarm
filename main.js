@@ -20,12 +20,15 @@ const CONFIG = {
     RPC: process.env.RPC_URL,
     KEY: process.env.PRIVATE_KEY,
     PORT: process.env.PORT || 10000,
-    JITO_FEE: 100000,
-    MIN_OUT: 108000000
+    JITO_FEE: parseInt(process.env.JITO_TIP_AMOUNT) || 100000,
+    MIN_OUT: parseInt(process.env.CONFIDENCE_THRESHOLD) || 108000000,
+    ENABLED: process.env.ACTIVE === 'true',
+    WALLET: process.env.SOLANA_WALLET_ADDRESS,
+    KRAKEN: process.env.KRAKEN_DEPOSIT_ADDRESS
 };
 
-if (!CONFIG.TOKEN || !CONFIG.KEY) {
-    console.error("CRITICAL: Environment Variables Not Found.");
+if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
+    console.error("CRITICAL: Veritable Labels Missing. Verify Render Dashboard.");
     process.exit(1);
 }
 
@@ -43,7 +46,7 @@ const VAULT = {
     }
 };
 
-let hunting = true;
+let hunting = CONFIG.ENABLED;
 let strikes = 0;
 
 async function executeTitan(quote) {
@@ -52,7 +55,8 @@ async function executeTitan(quote) {
             quoteResponse: quote,
             userPublicKey: wallet.publicKey.toString(),
             wrapAndUnwrapSol: true,
-            prioritizationFeeLamports: CONFIG.JITO_FEE
+            prioritizationFeeLamports: CONFIG.JITO_FEE,
+            dynamicComputeUnitLimit: true
         });
 
         const vTx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
@@ -65,10 +69,10 @@ async function executeTitan(quote) {
 
         if (res.data.result) {
             strikes++;
-            await VAULT.broadcast('TITAN_STRIKE', `Bundle: ${res.data.result}`);
+            await VAULT.broadcast('TITAN_STRIKE', `Jito Bundle: ${res.data.result}`);
         }
     } catch (err) { 
-        await VAULT.broadcast('ERROR', 'Execution Failed');
+        await VAULT.broadcast('ERROR', 'Titan Execution Rejected');
     }
 }
 
@@ -78,8 +82,8 @@ async function predator() {
         if (hunting) {
             try {
                 const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
-                for (const pool of data.slice(0, 10)) {
-                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50`);
+                for (const pool of data.slice(0, 5)) {
+                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50&onlyDirectRoutes=true`);
                     if (q.data && parseInt(q.data.outAmount) > CONFIG.MIN_OUT) {
                         await executeTitan(q.data);
                     }
@@ -93,12 +97,29 @@ async function predator() {
 }
 
 bot.onText(/\/status/, async (msg) => {
-    const bal = await connection.getBalance(wallet.publicKey);
-    bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
+    try {
+        const bal = await connection.getBalance(wallet.publicKey);
+        bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nWallet: ${wallet.publicKey.toString().slice(0,4)}...`);
+    } catch (e) {
+        bot.sendMessage(msg.chat.id, "Status Check Failed: RPC Timeout.");
+    }
 });
 
-bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'SHIELD ON'); });
-bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); });
+bot.onText(/\/shield_on/, () => { 
+    hunting = true; 
+    VAULT.broadcast('SYSTEM', 'SHIELD ON - HUNTING'); 
+});
+
+bot.onText(/\/shield_off/, () => { 
+    hunting = false; 
+    VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); 
+});
+
+bot.onText(/\/withdraw/, async (msg) => {
+    if (CONFIG.KRAKEN) {
+        bot.sendMessage(msg.chat.id, `Withdrawal target: ${CONFIG.KRAKEN}`);
+    }
+});
 
 http.createServer((req, res) => {
     res.writeHead(200);
@@ -115,6 +136,6 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error("FATAL", err);
+    console.error("FATAL ERROR", err);
     process.exit(1);
 });
