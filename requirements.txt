@@ -8,3 +8,5 @@ anchorpy
 requests
 grpcio
 grpcio-tools
+jito-py
+python-dotenv
