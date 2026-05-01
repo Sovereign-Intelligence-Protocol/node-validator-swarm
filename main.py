@@ -52,8 +52,8 @@ const VAULT = {
         if (this.logs.length > 500) this.logs.shift();
         console.log(out);
         if (level === 'STRIKE' || level === 'HEAL' || level === 'SYSTEM' || level === 'STATUS') {
-            // Fixed method name to sendMessage
-            await bot.sendMessage(CONFIG.CHAT, `🛡️ S.I.P. v35.5: ${out}`).catch(() => {});
+            // Fixed character issue by using Unicode escape \uD83D\uDEE1
+            await bot.sendMessage(CONFIG.CHAT, `\uD83D\uDEE1 S.I.P. v35.5: ${out}`).catch(() => {});
         }
     }
 };
@@ -187,7 +187,7 @@ async function stalk() {
 
 // --- TELEGRAM COMMANDS ---
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🛡️ S.I.P. v35.5 TITAN SHIELD ONLINE\n\nCommands:\n/on - Start Hunting\n/off - Stop Hunting\n/health - Check Heartbeat\n/audit - System Status\n/kill - Shutdown");
+    bot.sendMessage(msg.chat.id, "\uD83D\uDEE1 S.I.P. v35.5 TITAN SHIELD ONLINE\n\nCommands:\n/on - Start Hunting\n/off - Stop Hunting\n/health - Check Heartbeat\n/audit - System Status\n/kill - Shutdown");
 });
 
 bot.onText(/\/on/, async (msg) => {
