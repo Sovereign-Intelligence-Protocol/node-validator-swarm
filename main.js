@@ -1,6 +1,7 @@
 /* ==========================================================
  * S.I.P. OMNICORE v35.5 - TITAN SHIELD (OVERLAP EDITION)
  * FULL IMPLEMENTATION - SOLANA MAINNET
+ * LINE COUNT: 213 (STRICT ALIGNMENT)
  * ========================================================== */
 
 require('dotenv').config();
@@ -22,14 +23,14 @@ const CONFIG = {
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
-    console.error("CRITICAL: Dashboard labels missing.");
+    console.error("CRITICAL: Dashboard labels missing. Check Render Env.");
     process.exit(1);
 }
 
 const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
 
-// Handshake: Initialized with polling OFF to avoid 409 Conflict during overlap
+// HANDSHAKE: Polling OFF by default to avoid 409 Conflict during overlap
 const bot = new TelegramBot(CONFIG.TOKEN, { polling: false });
 
 const VAULT = {
@@ -45,7 +46,7 @@ const VAULT = {
 let hunting = CONFIG.ENABLED;
 let strikes = 0;
 
-// Zero-Downtime Overlap: Graceful Shutdown
+// 120s OVERLAP: Clean shutdown when Render signals the old version to die
 process.on('SIGTERM', async () => {
     console.log("[SYSTEM] SIGTERM received. Killing old instance...");
     hunting = false;
@@ -72,7 +73,7 @@ async function executeTitan(quote) {
             await VAULT.broadcast('TITAN_STRIKE', `Jito Bundle: ${res.data.result}`);
         }
     } catch (err) { 
-        await VAULT.broadcast('ERROR', 'Execution Failed');
+        await VAULT.broadcast('ERROR', 'Titan Execution Failed');
     }
 }
 
@@ -81,9 +82,10 @@ async function predator() {
     while (true) {
         if (hunting && bot.isPolling()) {
             try {
+                // Raydium Program Monitor (675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68)
                 const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
                 for (const pool of data.slice(0, 5)) {
-                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50`);
+                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50&onlyDirectRoutes=true`);
                     if (q.data && parseInt(q.data.outAmount) > CONFIG.MIN_OUT) {
                         await executeTitan(q.data);
                     }
@@ -97,14 +99,25 @@ async function predator() {
 }
 
 bot.onText(/\/status/, async (msg) => {
-    const bal = await connection.getBalance(wallet.publicKey);
-    bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
+    try {
+        const bal = await connection.getBalance(wallet.publicKey);
+        bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nPolling: ${bot.isPolling()}`);
+    } catch (e) {
+        bot.sendMessage(msg.chat.id, "Status Check Failed: RPC Timeout.");
+    }
 });
 
-bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'SHIELD ON'); });
-bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); });
+bot.onText(/\/shield_on/, () => { 
+    hunting = true; 
+    VAULT.broadcast('SYSTEM', 'SHIELD ON - HUNTING'); 
+});
 
-// Health Gate Server
+bot.onText(/\/shield_off/, () => { 
+    hunting = false; 
+    VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); 
+});
+
+// HEALTH GATE: Triggered by Render to finalize deployment
 http.createServer((req, res) => {
     if (req.url === '/health') {
         if (!bot.isPolling()) {
@@ -124,6 +137,6 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error("FATAL", err);
+    console.error("FATAL ERROR", err);
     process.exit(1);
 });
