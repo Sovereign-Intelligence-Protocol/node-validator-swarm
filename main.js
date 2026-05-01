@@ -52,7 +52,7 @@ const VAULT = {
         if (this.logs.length > 500) this.logs.shift();
         console.log(out);
         if (level === 'STRIKE' || level === 'HEAL' || level === 'SYSTEM' || level === 'STATUS') {
-            // Fixed character issue by using Unicode escape \uD83D\uDEE1
+            // FIXED: Using Unicode escape sequence for the shield emoji
             await bot.sendMessage(CONFIG.CHAT, `\uD83D\uDEE1 S.I.P. v35.5: ${out}`).catch(() => {});
         }
     }
@@ -187,6 +187,7 @@ async function stalk() {
 
 // --- TELEGRAM COMMANDS ---
 bot.onText(/\/start/, (msg) => {
+    // FIXED: Using Unicode escape for shield emoji
     bot.sendMessage(msg.chat.id, "\uD83D\uDEE1 S.I.P. v35.5 TITAN SHIELD ONLINE\n\nCommands:\n/on - Start Hunting\n/off - Stop Hunting\n/health - Check Heartbeat\n/audit - System Status\n/kill - Shutdown");
 });
 
