@@ -1,7 +1,7 @@
 {
   "name": "omnicore-v35-5",
   "version": "35.5.0",
-  "description": "S.I.P. Omnicore Titan Shield",
+  "description": "S.I.P. Omnicore Titan Shield Overlap Edition",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
