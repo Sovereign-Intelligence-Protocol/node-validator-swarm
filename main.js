@@ -1,5 +1,5 @@
 /* ==========================================================
- * S.I.P. OMNICORE v12.4 - SOVEREIGN COMMAND
+ * S.I.P. OMNICORE v35.5 - TITAN SHIELD
  * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
  * LINE COUNT: 213 (STRICT ALIGNMENT)
  * ========================================================== */
@@ -20,78 +20,68 @@ const CONFIG = {
     RPC: process.env.RPC_URL,
     KEY: process.env.PRIVATE_KEY,
     PORT: process.env.PORT || 10000,
-    MIN_PROFIT: 0.05,
-    SLIPPAGE: 50,
-    HEARTBEAT: 60000
+    JITO_FEE: 100000,
+    MIN_OUT: 108000000
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY) {
-    console.error("FATAL: Environment Mapping Failed.");
+    console.error("CRITICAL: Environment Variables Not Found.");
     process.exit(1);
 }
 
-const bot = new TelegramBot(CONFIG.TOKEN, { polling: { interval: 300, params: { timeout: 10 } } });
-const connection = new Connection(CONFIG.RPC, { commitment: 'confirmed', confirmTransactionInitialTimeout: 60000 });
+const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
-const JITO_ENGINE = 'https://mainnet.block-engine.jito.wtf/api/v1/bundles';
+const bot = new TelegramBot(CONFIG.TOKEN, { polling: { interval: 300 } });
 
 const VAULT = {
-    logs: [],
-    async broadcast(level, msg) {
-        const out = `[${level}] ${new Date().toLocaleTimeString()}: ${msg}`;
-        console.log(out);
-        if (['STRIKE', 'SYSTEM', 'STATUS'].includes(level)) {
-            await bot.sendMessage(CONFIG.CHAT, `Omnicore v12.4: ${out}`).catch(() => {});
+    async broadcast(tag, msg) {
+        const payload = `[${tag}] ${new Date().toLocaleTimeString()}: ${msg}`;
+        console.log(payload);
+        if (CONFIG.CHAT) {
+            await bot.sendMessage(CONFIG.CHAT, `OMNICORE v35.5: ${payload}`).catch(() => {});
         }
     }
 };
 
-let activeHunt = true;
-let lastStrike = Date.now();
+let hunting = true;
+let strikes = 0;
 
-async function executeTrade(quote) {
+async function executeTitan(quote) {
     try {
-        const swapResponse = await axios.post('https://quote-api.jup.ag/v6/swap', {
+        const { data: { swapTransaction } } = await axios.post('https://quote-api.jup.ag/v6/swap', {
             quoteResponse: quote,
             userPublicKey: wallet.publicKey.toString(),
             wrapAndUnwrapSol: true,
-            dynamicComputeUnitLimit: true,
-            prioritizationFeeLamports: 'auto'
+            prioritizationFeeLamports: CONFIG.JITO_FEE
         });
 
-        const vTx = VersionedTransaction.deserialize(Buffer.from(swapResponse.data.swapTransaction, 'base64'));
-        const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-        vTx.message.recentBlockhash = latestBlockhash.blockhash;
+        const vTx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
         vTx.sign([wallet]);
-        
-        const res = await axios.post(JITO_ENGINE, {
+
+        const res = await axios.post('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
             jsonrpc: "2.0", id: 1, method: "sendBundle",
             params: [[bs58.encode(vTx.serialize())]]
         });
 
         if (res.data.result) {
-            await VAULT.broadcast('STRIKE', `Trade Confirmed: ${res.data.result}`);
-            lastStrike = Date.now();
+            strikes++;
+            await VAULT.broadcast('TITAN_STRIKE', `Bundle: ${res.data.result}`);
         }
     } catch (err) { 
-        await VAULT.broadcast('ERROR', `Execution Failed: ${err.message}`); 
+        await VAULT.broadcast('ERROR', 'Execution Failed');
     }
 }
 
-async function stalk() {
-    await VAULT.broadcast('SYSTEM', 'Omnicore v12.4: Predator Mode Engaged.');
+async function predator() {
+    await VAULT.broadcast('SYSTEM', 'Titan Shield Engaged. Predator Mode.');
     while (true) {
-        if (activeHunt) {
+        if (hunting) {
             try {
-                const response = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
-                const pools = response.data?.slice(0, 15);
-                if (pools) {
-                    for (const pool of pools) {
-                        const qUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=${CONFIG.SLIPPAGE}`;
-                        const quote = await axios.get(qUrl);
-                        if (quote.data && parseFloat(quote.data.outAmount) > 110000000) {
-                            await executeTrade(quote.data);
-                        }
+                const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
+                for (const pool of data.slice(0, 10)) {
+                    const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50`);
+                    if (q.data && parseInt(q.data.outAmount) > CONFIG.MIN_OUT) {
+                        await executeTitan(q.data);
                     }
                 }
             } catch (e) { 
@@ -104,28 +94,27 @@ async function stalk() {
 
 bot.onText(/\/status/, async (msg) => {
     const bal = await connection.getBalance(wallet.publicKey);
-    bot.sendMessage(msg.chat.id, `OMNICORE v12.4 STATUS\nHunting: ${activeHunt}\nBalance: ${bal/1e9} SOL\nUptime: ${Math.floor(process.uptime()/60)}m`);
+    bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
 });
 
-bot.onText(/\/on/, () => { activeHunt = true; VAULT.broadcast('STATUS', 'HUNTING ACTIVE'); });
-bot.onText(/\/off/, () => { activeHunt = false; VAULT.broadcast('STATUS', 'HUNTING PAUSED'); });
+bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'SHIELD ON'); });
+bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); });
 
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end('OMNICORE_V12_4_ALIVE');
+    res.end('V35.5_TITAN_ALIVE');
 }).listen(CONFIG.PORT);
 
 process.on('SIGTERM', () => {
     bot.stopPolling();
-    setTimeout(() => process.exit(0), 1000);
+    setTimeout(() => process.exit(0), 500);
 });
 
 async function main() {
-    await VAULT.broadcast('SYSTEM', 'Sovereign Command Online.');
-    await stalk();
+    await predator();
 }
 
 main().catch(err => {
-    console.error(err);
+    console.error("FATAL", err);
     process.exit(1);
 });
