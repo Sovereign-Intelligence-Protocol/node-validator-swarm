@@ -6,3 +6,5 @@ httpx
 psycopg2-binary
 anchorpy
 requests
+grpcio
+yellowstone-grpc
