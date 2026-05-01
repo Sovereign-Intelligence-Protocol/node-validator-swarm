@@ -1,7 +1,6 @@
 /* ==========================================================
  * S.I.P. OMNICORE v35.8 - TITAN SHIELD
- * ZERO-DEPENDENCY BUILD (NO PACKAGE.JSON REQUIRED)
- * LINE COUNT: 213 (STRICT ALIGNMENT)
+ * FULL IMPLEMENTATION - NO REMOVALS - NO OPTIMIZATION
  * ========================================================== */
 
 const { Connection, Keypair, VersionedTransaction } = require('@solana/web3.js');
@@ -10,7 +9,6 @@ const TelegramBot = require('node-telegram-bot-api');
 const bs58 = require('bs58');
 const http = require('http');
 
-// Render injects these directly into process.env
 const CONFIG = {
     TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     CHAT: process.env.TELEGRAM_ADMIN_ID,
@@ -23,14 +21,14 @@ const CONFIG = {
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
-    console.error("FATAL: System labels missing from process.env.");
+    console.error("FATAL: Environment Labels Missing.");
     process.exit(1);
 }
 
 const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
 
-// Direct Fire: Telegram polling active immediately
+// DIRECT FIRE: Starts polling immediately
 const bot = new TelegramBot(CONFIG.TOKEN, { polling: { interval: 300 } });
 
 const VAULT = {
@@ -46,7 +44,7 @@ const VAULT = {
 let strikes = 0;
 
 process.on('SIGTERM', async () => {
-    console.log("[SYSTEM] SIGTERM: Handoff in progress.");
+    console.log("[SYSTEM] SIGTERM received. Closing for handoff...");
     if (bot.isPolling()) await bot.stopPolling();
     setTimeout(() => process.exit(0), 1000);
 });
@@ -75,9 +73,10 @@ async function executeTitan(quote) {
 }
 
 async function predator() {
-    await VAULT.broadcast('SYSTEM', 'v35.8 Ironclad Active. Predator Scanning.');
+    await VAULT.broadcast('SYSTEM', 'v35.8 Predator Active. Hunting mode.');
     while (true) {
         try {
+            // Predator Scan for Golden Opportunities
             const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
             for (const pool of data.slice(0, 5)) {
                 const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50&onlyDirectRoutes=true`);
@@ -94,15 +93,15 @@ async function predator() {
 
 bot.onText(/\/status/, async (msg) => {
     const bal = await connection.getBalance(wallet.publicKey);
-    bot.sendMessage(msg.chat.id, `v35.8 DIRECT\nHunting: ACTIVE\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
+    bot.sendMessage(msg.chat.id, `v35.8 STATUS\nHunting: ACTIVE\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL`);
 });
 
-bot.onText(/\/shield_on/, () => { VAULT.broadcast('SYSTEM', 'PREDATOR RE-ARMED'); });
+bot.onText(/\/shield_on/, () => { VAULT.broadcast('SYSTEM', 'PREDATOR ENGAGED'); });
 
-// Global Catch-All Server (Kills all 404/409/Health errors)
+// Catch-all server to satisfy Render and kill 404s
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end('OMNICORE_IRONCLAD_ACTIVE');
+    res.end('V35.8_ACTIVE');
 }).listen(CONFIG.PORT);
 
 async function main() {
@@ -110,6 +109,6 @@ async function main() {
 }
 
 main().catch(err => {
-    console.error("FATAL", err);
+    console.error("FATAL ERROR", err);
     process.exit(1);
 });
