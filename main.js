@@ -1,11 +1,11 @@
 /* ==========================================================
- * S.I.P. OMNICORE v35.5 - TITAN SHIELD (OVERLAP EDITION)
+ * S.I.P. OMNICORE v35.5 - TITAN SHIELD
  * FULL IMPLEMENTATION - SOLANA MAINNET
  * LINE COUNT: 213 (STRICT ALIGNMENT)
  * ========================================================== */
 
 require('dotenv').config();
-const { Connection, Keypair, VersionedTransaction } = require('@solana/web3.js');
+const { Connection, Keypair, VersionedTransaction, PublicKey } = require('@solana/web3.js');
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 const bs58 = require('bs58');
@@ -23,14 +23,12 @@ const CONFIG = {
 };
 
 if (!CONFIG.TOKEN || !CONFIG.KEY || !CONFIG.RPC) {
-    console.error("CRITICAL: Dashboard labels missing. Check Render Env.");
+    console.error("CRITICAL: Dashboard labels missing.");
     process.exit(1);
 }
 
 const connection = new Connection(CONFIG.RPC, 'confirmed');
 const wallet = Keypair.fromSecretKey(bs58.decode(CONFIG.KEY));
-
-// HANDSHAKE: Polling OFF by default to avoid 409 Conflict during overlap
 const bot = new TelegramBot(CONFIG.TOKEN, { polling: false });
 
 const VAULT = {
@@ -46,9 +44,8 @@ const VAULT = {
 let hunting = CONFIG.ENABLED;
 let strikes = 0;
 
-// 120s OVERLAP: Clean shutdown when Render signals the old version to die
 process.on('SIGTERM', async () => {
-    console.log("[SYSTEM] SIGTERM received. Killing old instance...");
+    console.log("[SYSTEM] SIGTERM received. Closing Toll Bridge...");
     hunting = false;
     if (bot.isPolling()) await bot.stopPolling();
     setTimeout(() => process.exit(0), 1000);
@@ -73,7 +70,7 @@ async function executeTitan(quote) {
             await VAULT.broadcast('TITAN_STRIKE', `Jito Bundle: ${res.data.result}`);
         }
     } catch (err) { 
-        await VAULT.broadcast('ERROR', 'Titan Execution Failed');
+        await VAULT.broadcast('ERROR', 'Execution Rejected');
     }
 }
 
@@ -82,7 +79,6 @@ async function predator() {
     while (true) {
         if (hunting && bot.isPolling()) {
             try {
-                // Raydium Program Monitor (675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68)
                 const { data } = await axios.get('https://api.jup.ag/v6/program_id_to_tokens?programId=675k1q2wSjS691hu5tSh1269B2uWp7otFZg2DG22WX68');
                 for (const pool of data.slice(0, 5)) {
                     const q = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${pool.mint}&amount=100000000&slippageBps=50&onlyDirectRoutes=true`);
@@ -101,34 +97,26 @@ async function predator() {
 bot.onText(/\/status/, async (msg) => {
     try {
         const bal = await connection.getBalance(wallet.publicKey);
-        bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nPolling: ${bot.isPolling()}`);
+        bot.sendMessage(msg.chat.id, `v35.5 STATUS\nHunting: ${hunting}\nStrikes: ${strikes}\nBalance: ${bal/1e9} SOL\nBridge: ${bot.isPolling() ? 'OPEN' : 'CLOSED'}`);
     } catch (e) {
-        bot.sendMessage(msg.chat.id, "Status Check Failed: RPC Timeout.");
+        bot.sendMessage(msg.chat.id, "Status Failed.");
     }
 });
 
-bot.onText(/\/shield_on/, () => { 
-    hunting = true; 
-    VAULT.broadcast('SYSTEM', 'SHIELD ON - HUNTING'); 
-});
+bot.onText(/\/shield_on/, () => { hunting = true; VAULT.broadcast('SYSTEM', 'SHIELD ON'); });
+bot.onText(/\/shield_off/, () => { hunting = false; VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); });
 
-bot.onText(/\/shield_off/, () => { 
-    hunting = false; 
-    VAULT.broadcast('SYSTEM', 'SHIELD STANDBY'); 
-});
-
-// HEALTH GATE: Triggered by Render to finalize deployment
 http.createServer((req, res) => {
     if (req.url === '/health') {
         if (!bot.isPolling()) {
-            console.log("[SYSTEM] Health Gate Passed. Handing over Telegram line...");
+            console.log("[SYSTEM] Health Gate Passed. Predator Active.");
             bot.startPolling({ interval: 300 });
         }
         res.writeHead(200);
         res.end('OK');
     } else {
         res.writeHead(200);
-        res.end('V35.5_TITAN_ALIVE');
+        res.end('V35.5_ALIVE');
     }
 }).listen(CONFIG.PORT);
 
