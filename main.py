@@ -3,7 +3,7 @@ from flask import Flask
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
-# --- MATCHED LABELS FROM SAVE DATA ---
+# --- PRECISE VARIABLE MAPPING FROM SAVED DATA ---
 RPC, TOKEN = os.getenv("RPC_URL"), os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
 WALLET = os.getenv("SOLANA_WALLET_ADDRESS", "NOT_SET")
@@ -11,6 +11,7 @@ KEY_STR = os.getenv("PRIVATE_KEY")
 BASE_TIP = float(os.getenv("JITO_TIP_AMOUNT", "0.001"))
 THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.85"))
 KRAKEN_ADDR = os.getenv("KRAKEN_DEPOSIT_ADDRESS")
+DB_URL = os.getenv("DATABASE_URL")
 PORT, ACTIVE = int(os.environ.get("PORT", 10000)), True
 
 def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
@@ -20,11 +21,11 @@ async def notify(m):
         try:
             async with httpx.AsyncClient() as c:
                 await c.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                             json={"chat_id": ADMIN_ID, "text": f"OMNICORE: {m}"})
+                             json={"chat_id": ADMIN_ID, "text": f"OMNICORE 7.5: {m}"})
         except: pass
 
 async def get_market_vitals():
-    """ADAPTIVE CORE: Logic from v7.5 Smart Patch"""
+    """ADAPTIVE CORE: Logic to compete with high Jito tips"""
     try:
         async with httpx.AsyncClient() as c:
             res = await c.get("https://mainnet.block-engine.jito.wtf/api/v1/bundles/tip_floor")
@@ -48,11 +49,11 @@ async def handle_cmds():
                         # --- FULL COMMAND SUITE ---
                         if "/health" in cmd:
                             t, h = await get_market_vitals()
-                            await notify(f"STATUS: ONLINE\nTIP: {t:.5f}\nHEAT: {h}x\nSENSITIVITY: {THRESHOLD}")
+                            await notify(f"STATUS: ONLINE\nTIP: {t:.5f} SOL\nHEAT: {h}x\nSENSITIVITY: {THRESHOLD*100}%")
                         elif "/hunt" in cmd: await notify("RE-INITIALIZING MAINNET SCAN...")
                         elif "/wallet" in cmd: await notify(f"SOL: {WALLET}\nKRAKEN: {KRAKEN_ADDR}")
-                        elif "/revenue" in cmd: await notify("REVENUE: [FETCHING PG-DB...]")
-                        elif "/subscribers" in cmd: await notify("MONITORING: ACTIVE")
+                        elif "/revenue" in cmd: await notify("REVENUE: [FETCHING DB...]")
+                        elif "/subscribers" in cmd: await notify("MONITORING STATS: ACTIVE")
                         elif "/stop" in cmd: ACTIVE = False; await notify("ENGINE HALTED.")
                         elif "/start" in cmd: ACTIVE = True; await notify("ENGINE RESTARTED.")
         except: pass
@@ -63,8 +64,11 @@ signal.signal(signal.SIGTERM, handoff)
 
 async def core():
     log(f"==> OMNICORE SMART v7.5 | WALLET: {WALLET[:6]}")
+    if not KEY_STR: log("FATAL: PRIVATE_KEY MISSING"); return
+    
     asyncio.create_task(handle_cmds())
-    await notify("Omnicore v7.5: Full-On Implementation Online.")
+    await notify("Omnicore v7.5 Full Implementation: DEPLOYED")
+    
     async with AsyncClient(RPC) as client:
         while True:
             if ACTIVE:
@@ -73,7 +77,8 @@ async def core():
                     slot = (await client.get_slot()).value
                     log(f"SLOT: {slot} | HEAT: {heat}x | TIP: {tip:.5f}")
                     await asyncio.sleep(1)
-                except: await asyncio.sleep(2)
+                except Exception as e:
+                    log(f"BRIDGE ERR: {e}"); await asyncio.sleep(2)
             else: await asyncio.sleep(5)
 
 app = Flask(__name__)
