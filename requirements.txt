@@ -6,14 +6,7 @@ httpx
 psycopg2-binary
 anchorpy
 requests
-grpcio
-grpcio-tools
 jito-py
 python-dotenv
-# Professional Install: Use direct git links if PyPI fails
-git+https://github.com/triton-one/yellowstone-grpc.git#subdirectory=yellowstone-grpc-python
-git+https://github.com/jito-labs/shredstream-sdk-python.git
 orjson
 tenacity
-apscheduler-ng
-diskcache
