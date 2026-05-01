@@ -51,7 +51,7 @@ const VAULT = {
         if (this.logs.length > 500) this.logs.shift();
         console.log(out);
         if (level === 'STRIKE' || level === 'HEAL' || level === 'SYSTEM') {
-            await bot.sendMessage(CONFIG.CHAT, `🛡️ ${out}`).catch(() => {});
+            await bot.send_message(CONFIG.CHAT, f"Protection Active: {out}").catch(() => {});
         }
     }
 };
