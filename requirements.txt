@@ -10,3 +10,9 @@ grpcio
 grpcio-tools
 jito-py
 python-dotenv
+shredstream-sdk-python
+orjson
+ray
+tenacity
+apscheduler-ng
+diskcache
