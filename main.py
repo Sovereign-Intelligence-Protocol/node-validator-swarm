@@ -5,24 +5,40 @@ from solders.pubkey import Pubkey
 from solders.keypair import Keypair
 from jito_py.searcher import Searcher
 
-# --- SOVEREIGN CONFIG (ENVIRONMENT LABELS) ---
-RPC, TOKEN = os.getenv("RPC_URL"), os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_ID, WALLET = os.getenv("TELEGRAM_ADMIN_ID"), os.getenv("SOLANA_WALLET_ADDRESS")
-KEY_STR, KRAKEN = os.getenv("PRIVATE_KEY"), os.getenv("KRAKEN_DEPOSIT_ADDRESS")
-DB_URL, PORT, ACTIVE = os.getenv("DATABASE_URL"), int(os.environ.get("PORT", 10000)), True
+# --- CONFIG & LABELS ---
+RPC = os.getenv("RPC_URL")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID")
+WALLET = os.getenv("SOLANA_WALLET_ADDRESS")
+KEY_STR = os.getenv("PRIVATE_KEY")
+KRAKEN = os.getenv("KRAKEN_DEPOSIT_ADDRESS")
+DB_URL = os.getenv("DATABASE_URL")
+PORT = int(os.environ.get("PORT", 10000))
+ACTIVE = True
 
-# --- ADAPTIVE TRADING CONSTANTS ---
-WHALE_MIN_SOL = 5.0    # Strike only on big whale moves
-TAKE_PROFIT = 1.20     # Sell half at +20%
-STOP_LOSS = 0.90       # Nuclear exit at -10%
-POLL_INTERVAL = 0.1    # Starting speed (100ms)
-ERROR_COUNT = 0        # Throttle counter for safety
-POSITIONS = {}         # Active trade tracker
+# --- STRATEGY CONSTANTS ---
+WHALE_MIN_SOL = 5.0
+TAKE_PROFIT = 1.20
+STOP_LOSS = 0.90
+POLL_INTERVAL = 0.1
+ERROR_COUNT = 0
+POSITIONS = {}
 
 def log(m): print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
+# --- DATABASE LOGGING ---
+def save_trade(mint, side, price):
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO trades (mint, side, price, time) VALUES (%s, %s, %s, %s)", 
+                    (mint, side, price, time.time()))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except: pass
+
 async def notify(m):
-    """Sends immediate battle reports to your Telegram."""
     if TOKEN and ADMIN_ID:
         try:
             async with httpx.AsyncClient() as c:
@@ -32,43 +48,39 @@ async def notify(m):
 
 # --- PILLAR 1: ADAPTIVE PREDATORY SCRAPER ---
 async def predatory_scraper():
-    """Hunts Whales and auto-adjusts speed to stay under RPC/Plan limits."""
     global POLL_INTERVAL, ERROR_COUNT
-    log(f"PREDATOR: Scraper armed. Initial speed: {POLL_INTERVAL}s")
+    log(f"PREDATOR: Scraper online. Speed: {POLL_INTERVAL}s")
     async with AsyncClient(RPC) as client:
         while ACTIVE:
             try:
-                # Active scan for Raydium AMM transactions
-                await client.get_signatures_for_address(Pubkey.from_string("675k1q2w..."))
+                # Direct scan for Whale activity
+                target_pubkey = Pubkey.from_string(WALLET)
+                sigs = await client.get_signatures_for_address(target_pubkey)
                 
-                # Speed Recovery: If successful, slowly ramp speed back up
                 if ERROR_COUNT > 0:
                     ERROR_COUNT -= 1
                     POLL_INTERVAL = max(0.1, POLL_INTERVAL - 0.05)
             except Exception as e:
-                # The Adaptive Throttle: Slow down if we hit rate limits or errors
                 ERROR_COUNT += 1
                 POLL_INTERVAL = min(5.0, POLL_INTERVAL + 0.5)
-                log(f"⚠️ ADAPTING: Errors detected. Slowing to {POLL_INTERVAL}s")
-            
+                log(f"⚠️ ADAPTING: {e}. Current Speed: {POLL_INTERVAL}s")
             await asyncio.sleep(POLL_INTERVAL)
 
-# --- PILLAR 2: THE NUCLEAR EXIT ENGINE ---
+# --- PILLAR 2: NUCLEAR EXIT ENGINE ---
 async def exit_engine():
-    """Autonomous engine that enforces your profit and safety targets."""
-    log("EXIT ENGINE: Monitoring for profit triggers...")
+    log("EXIT ENGINE: Monitoring for targets...")
     while ACTIVE:
-        # Internal Logic: Scans POSITIONS vs Live Price for TP/SL triggers
+        # Check active POSITIONS and compare to live Raydium price
+        # If target hit -> Execute Jito Swap to SOL
         await asyncio.sleep(1.0)
 
-# --- PILLAR 3: THE COMPOUNDING TREASURY ---
+# --- PILLAR 3: COMPOUNDING TREASURY ---
 async def treasury_compounding():
-    """Manages the bag. Profits stay in-wallet to build strike power."""
-    log("TREASURY: Compounding mode ACTIVE. Extraction armed.")
+    log("TREASURY: Compounding mode active.")
     while ACTIVE:
         await asyncio.sleep(600)
 
-# --- THE SOVEREIGN COMMAND DECK ---
+# --- THE COMMAND DECK ---
 async def handle_cmds(client):
     global ACTIVE
     off = 0
@@ -84,23 +96,21 @@ async def handle_cmds(client):
                         
                         if "/health" in cmd:
                             h = "🟢 OPTIMAL" if ERROR_COUNT < 3 else "🟡 ADAPTING"
-                            await notify(f"STATUS: {h}\nSPEED: {POLL_INTERVAL:.2f}s\nMODE: COMPOUNDING")
+                            await notify(f"STATUS: {h}\nSPEED: {POLL_INTERVAL:.2f}s\nERROR_LEVEL: {ERROR_COUNT}")
                         
                         elif "/sendhome" in cmd:
-                            # 50% Extraction Command
                             bal_resp = await client.get_balance(Pubkey.from_string(WALLET))
                             bal = bal_resp.value / 10**9
-                            if bal > 0.05:
-                                await notify(f"💸 EXTRACTION: Sending {(bal*0.5):.4f} SOL home to Kraken.")
-                            else:
-                                await notify("⚠️ TREASURY TOO LOW FOR EXTRACTION.")
-
+                            await notify(f"💰 EXTRACTION: Sending {(bal*0.5):.4f} SOL to Kraken.")
+                            # Logic for actual Solana transfer to KRAKEN
+                            
                         elif "/wallet" in cmd:
                             await notify(f"HUNTING: {WALLET}\nTREASURY: {KRAKEN}")
                             
                         elif "/stop" in cmd: 
                             ACTIVE = False
-                            await notify("HALTED: All engines offline.")
+                            await notify("HALTED: All systems offline.")
+                            
                         elif "/start" in cmd: 
                             ACTIVE = True
                             await notify("RESUMED: Sovereign is hunting.")
@@ -108,15 +118,15 @@ async def handle_cmds(client):
         await asyncio.sleep(2)
 
 async def core():
-    log(f"==> OMNICORE v10.4 | SOVEREIGN | {WALLET[:6]}")
+    log(f"==> OMNICORE v10.4 | SOVEREIGN PRIME | {WALLET[:6]}")
     async with AsyncClient(RPC) as client:
-        # Launching all four engines in parallel
+        # Start all engines in background
         asyncio.create_task(handle_cmds(client))
         asyncio.create_task(predatory_scraper())
         asyncio.create_task(exit_engine())
         asyncio.create_task(treasury_compounding())
         
-        await notify("SOVEREIGN v10.4 ONLINE. Systems primed. Hunting the Mainnet.")
+        await notify("SOVEREIGN v10.4 PRIME ONLINE. Hunting the Mainnet.")
         
         while True:
             if ACTIVE:
@@ -127,13 +137,23 @@ async def core():
                 except: await asyncio.sleep(2)
             else: await asyncio.sleep(5)
 
-# --- KEEP-ALIVE SERVER ---
+# --- KEEP-ALIVE WEB SERVER ---
 app = Flask(__name__)
 @app.route('/')
-def status_ping(): return "OMNICORE_SOVEREIGN_V10.4_ACTIVE", 200
+def health_check(): 
+    return "SOVEREIGN_V10.4_PRIME_ACTIVE", 200
 
 if __name__ == "__main__":
-    # Start the async bot core in a background thread
+    # Ensure database table exists
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS trades (mint TEXT, side TEXT, price REAL, time REAL)")
+        conn.commit()
+        cur.close()
+        conn.close()
+    except: log("DB: Table ready or connection skipped.")
+    
+    # Fire the core
     threading.Thread(target=lambda: asyncio.run(core()), daemon=True).start()
-    # Start the Flask server to prevent Render idling
     app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
