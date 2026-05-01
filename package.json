@@ -1,6 +1,6 @@
 {
-  "name": "omnicore-titan-shield",
-  "version": "35.5.0",
+  "name": "omnicore-v12",
+  "version": "12.4.0",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
