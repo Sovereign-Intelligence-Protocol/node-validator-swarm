@@ -1,7 +1,16 @@
-"dependencies": {
+{
+  "name": "omnicore-v35-5",
+  "version": "35.5.0",
+  "description": "S.I.P. Omnicore Titan Shield",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
     "@solana/web3.js": "^1.98.0",
     "axios": "^1.7.0",
     "node-telegram-bot-api": "^0.66.0",
     "bs58": "^5.0.0",
     "dotenv": "^16.4.5"
+  }
 }
