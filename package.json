@@ -1,7 +1,7 @@
 {
   "name": "omnicore-v35-5",
   "version": "35.5.0",
-  "description": "S.I.P. Omnicore Titan Shield Overlap Edition",
+  "description": "S.I.P. Omnicore Titan Shield - Toll Bridge Edition",
   "main": "main.js",
   "scripts": {
     "start": "node main.js"
