@@ -1,9 +1,1 @@
-services:
-  - type: worker
-    name: lead-scalper-bot
-    runtime: python         # This forces it to stop looking for Node
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.0      # Ensures it uses a stable 2026 version
+
