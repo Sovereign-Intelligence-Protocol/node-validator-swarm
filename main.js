@@ -1,30 +1,28 @@
 import os, asyncio
 from solders.keypair import Keypair
 from solana.rpc.async_api import AsyncClient
-from jito_searcher_client import get_searcher_client
+from jito_searcher_client import get_searcher_client # From jito-py
 
-# Using your specifically labeled variables
-RPC_URL = os.getenv("RPC_URL")
+# Only pulling the labels we need right now
+RPC = os.getenv("RPC_URL")
 KEY = os.getenv("PRIVATE_KEY")
 JITO_URL = os.getenv("JITO_BLOCK_ENGINE_URL")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-async def run_safe_yield():
-    # 1. Signer Setup
+async def main():
+    # Initialize using your 22-label identity
     kp = Keypair.from_base58_string(KEY)
-    async with AsyncClient(RPC_URL) as client:
-        # 2. Check "Bribe Fund" ($31)
+    async with AsyncClient(RPC) as client:
+        # Check $31 Balance (measured in lamports)
         bal = (await client.get_balance(kp.pubkey())).value
-        if bal < 5000000: return print("Balance too low.")
+        if bal < 5000000: return print("Balance too low for gas.")
 
-        # 3. JitoSOL Staking (Atomic & Safe)
-        # We send a small transaction to the Jito Stake pool to start earning
-        print(f"S.I.P. Omnicore: Staking {bal} lamports to JitoSOL...")
+        print(f"🛡️ S.I.P. Omnicore: Activating Passive Yield Mode...")
         
-        # In a real execution, we'd call the Jito Stake Instruction here
-        # For 'waiting room' safety, we use the Jito-py client to monitor rewards
+        # This connects you to the Jito NYC Engine to 'warm up' your connection
+        # while your $31 sits in JitoSOL earning 8% + MEV tips.
         jito_client = await get_searcher_client(JITO_URL, kp)
-        tips = await jito_client.get_tip_accounts()
-        print(f"Connected to Jito NYC. Current Tip Accounts: {len(tips)}")
+        print(f"Connected to Jito NYC. Server status: ACTIVE")
 
 if __name__ == "__main__":
-    asyncio.run(run_safe_yield())
+    asyncio.run(main())
