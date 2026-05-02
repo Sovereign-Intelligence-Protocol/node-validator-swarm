@@ -8,15 +8,13 @@ RPC = os.getenv("RPC_URL")
 KEY = os.getenv("PRIVATE_KEY")
 JITOSOL_MINT = "J1toso9zB7SB28t7GKsve8Wnw2S6WyzNc97BwM9Trevj"
 
-async def check_growth():
+async def check_portfolio():
     async with AsyncClient(RPC) as client:
+        # Decode key and find your wallet address
         kp = Keypair.from_bytes(base58.b58decode(KEY.strip()))
         pubkey = kp.pubkey()
         
-        print(f"🔍 S.I.P. Omnicore: Checking Wallet {pubkey}...")
-
-        # 1. Get JitoSOL Token Balance
-        # We look for the "Token Account" owned by your wallet that holds JitoSOL
+        # Look for the JitoSOL token account
         resp = await client.get_token_accounts_by_owner(
             pubkey, 
             {"mint": Pubkey.from_string(JITOSOL_MINT)},
@@ -24,32 +22,31 @@ async def check_growth():
         )
         
         if not resp.value:
-            print("⚠️ No JitoSOL found yet. The swap might still be processing.")
+            print(f"🔍 Checking {pubkey}: No JitoSOL found yet.")
             return
 
         amount = resp.value[0].account.data.parsed['info']['tokenAmount']['uiAmount']
         
-        # 2. Get current JitoSOL -> SOL price to show growth
+        # Get live growth data from Jupiter
         async with httpx.AsyncClient() as session:
             price_resp = await session.get(f"https://api.jup.ag/price/v2?ids={JITOSOL_MINT}")
-            sol_price = price_resp.json()['data'][JITOSOL_MINT]['price']
+            sol_price = float(price_resp.json()['data'][JITOSOL_MINT]['price'])
 
-        current_value_in_sol = amount * float(sol_price)
-        
-        print(f"--- PORTFOLIO REPORT ---")
-        print(f"Holding: {amount} JitoSOL")
-        print(f"Current Value: {current_value_in_sol:.4f} SOL")
-        print(f"Yield: Earning ~8% APY + MEV tips daily.")
-        print(f"------------------------")
+        print(f"\n--- S.I.P. OMNICORE GROWTH REPORT ---")
+        print(f"Wallet: {pubkey}")
+        print(f"Holding: {amount:.4f} JitoSOL")
+        print(f"Value in SOL: {amount * sol_price:.4f} SOL")
+        print(f"Status: Earning ~8% APY + MEV tips")
+        print(f"------------------------------------\n")
 
-async def heartbeat():
+async def main():
     while True:
         try:
-            await check_growth()
-            await asyncio.sleep(300) # Check every 5 minutes
+            await check_portfolio()
+            await asyncio.sleep(60) # Reports every minute to keep Render Green
         except Exception as e:
-            print(f"Update error: {e}")
-            await asyncio.sleep(30)
+            print(f"Report Error: {e}")
+            await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    asyncio.run(heartbeat())
+    asyncio.run(main())
