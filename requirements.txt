@@ -1,12 +1,6 @@
-flask
 solana
 solders
 base58
 httpx
-psycopg2-binary
-anchorpy
-requests
-jito-py
-python-dotenv
-orjson
-jupiter-python-sdk
+flask
+gunicorn
