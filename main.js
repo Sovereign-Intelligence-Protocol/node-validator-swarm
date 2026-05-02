@@ -1,41 +1,36 @@
-// S.I.P. Omnicore v7.0 - Flash-Strike Module
-// Setup for Leaseweb NYC-01 Hardware
+import os
+import asyncio
+from solana.rpc.async_api import AsyncClient
+from solders.keypair import Keypair
+from jup_ag_sdk import Jupiter # Assuming Jupiter SDK for Python 2026
 
-use jup_ag_sdk::{JupiterClient, FlashLoan};
-use jito_searcher_client::get_searcher_client;
-use solana_sdk::{signature::Keypair, transaction::Transaction};
+# Using your specifically labeled variables
+RPC_URL = os.getenv("RPC_URL")
+PRIVATE_KEY = os.getenv("PRIVATE_KEY")
+JITO_ENABLED = os.getenv("JITO_ENABLED") # Verify if we want to use Jito route
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Initialize NYC Connections
-    let keypair = Keypair::from_base58_string(&std::env::var("PRIVATE_KEY")?);
-    let jup_client = JupiterClient::new("https://quote-api.jup.ag/v6");
-    let mut jito_client = get_searcher_client(&std::env::var("JITO_BLOCK_ENGINE_URL")?, &keypair).await?;
+async def main():
+    # Initialize connection using your labeled RPC
+    client = AsyncClient(RPC_URL)
+    wallet = Keypair.from_base58_string(PRIVATE_KEY)
+    
+    print(f"Omnicore Waiting Mode: Funding JitoSOL with {wallet.pubkey()}")
 
-    println!("Omnicore Live: Monitoring Long-Tail Arbs in NYC...");
+    # 1. Check Balance
+    balance = await client.get_balance(wallet.pubkey())
+    if balance.value < 10000000: # Ensure we have enough for gas
+        print("Balance too low for swap.")
+        return
 
-    loop {
-        // 2. Heartbeat Pulse (Your 120s Render Logic)
-        tokio::time::sleep(tokio::time::Duration::from_secs(120)).await;
-        
-        // 3. Scan for "Full Advantage" Opportunities
-        let arb_opportunity = scan_for_deltas().await;
+    # 2. Swap SOL -> JitoSOL (The safest yield)
+    # This uses Jupiter to find the best path for your $31
+    jup = Jupiter(client, wallet)
+    quote = await jup.get_quote("So11111111111111111111111111111111111111112", "J1toso9zB7SB28t7GKsve8Wnw2S6WyzNc97BwM9Trevj", 25000000) # ~$25-30
+    
+    transaction = await jup.swap(quote)
+    result = await client.send_transaction(transaction)
+    
+    print(f"Success! Your $31 is now earning Jito MEV rewards. Sig: {result}")
 
-        if let Some(opportunity) = arb_opportunity {
-            // 4. Calculate Max Loan (Based on Pool Depth)
-            let loan_amount = opportunity.calculate_max_liquidity();
-
-            // 5. Build Atomic Jito Bundle
-            let flash_loan_ix = jup_client.flash_borrow(loan_amount).await?;
-            let swap_ix = jup_client.swap(opportunity.route).await?;
-            let repay_ix = jup_client.flash_repay(loan_amount).await?;
-            let jito_tip_ix = build_jito_tip(opportunity.profit * 0.5); // 50% Tip
-
-            let bundle = vec![flash_loan_ix, swap_ix, repay_ix, jito_tip_ix];
-            
-            // 6. Execute (Risk-Free: Reverts if profit < costs)
-            jito_client.send_bundle(bundle).await?;
-            send_telegram_update("Profit Captured!").await;
-        }
-    }
-}
+if __name__ == "__main__":
+    asyncio.run(main())
