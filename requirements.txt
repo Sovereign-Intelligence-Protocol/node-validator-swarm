@@ -9,4 +9,4 @@ requests
 jito-py
 python-dotenv
 orjson
-tenacity
+jupiter-python-sdk
