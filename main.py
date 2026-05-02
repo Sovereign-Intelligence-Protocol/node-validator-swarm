@@ -1,41 +1,44 @@
 import os, asyncio, base58
-from jupiter_python_sdk.jupiter import Jupiter # From your requirements
+from jupiter_python_sdk.jupiter import Jupiter
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 
-# 1. Load your specific labels
-RPC_URL = os.getenv("RPC_URL")
-PRIVATE_KEY = os.getenv("PRIVATE_KEY") 
-
 async def main():
-    # 2. Setup Identity
-    async_client = AsyncClient(RPC_URL)
-    keypair = Keypair.from_bytes(base58.b58decode(PRIVATE_KEY))
-    
-    # Initialize Jupiter with your keypair
-    jupiter = Jupiter(
-        async_client=async_client,
-        keypair=keypair,
-        quote_api_url="https://quote-api.jup.ag/v6/quote?"
-    )
+    rpc_url = os.getenv("RPC_URL")
+    private_key = os.getenv("PRIVATE_KEY")
 
-    # 3. Execution: Swap $31 (approx 0.18 SOL) to JitoSOL
-    # Amount is in lamports (1 SOL = 1,000,000,000)
-    print("S.I.P. Omnicore: Executing Safe Yield Swap...")
+    if not private_key:
+        print("❌ Missing PRIVATE_KEY")
+        return
+
+    async_client = AsyncClient(rpc_url)
+    keypair = Keypair.from_bytes(base58.b58decode(private_key.strip()))
+    
+    # 1. Execute the $31 Yield Swap once
+    jupiter = Jupiter(async_client=async_client, keypair=keypair, quote_api_url="https://quote-api.jup.ag/v6/quote?")
+    print("🛡️ S.I.P. Omnicore: Migrating $31 to JitoSOL...")
     
     try:
-        transaction_data = await jupiter.swap(
-            input_mint="So11111111111111111111111111111111111111112", # SOL
-            output_mint="J1toso9zB7SB28t7GKsve8Wnw2S6WyzNc97BwM9Trevj", # JitoSOL
-            amount=180000000, # Approx $30-31
-            slippage_bps=10   # 0.1% slippage
+        tx = await jupiter.swap(
+            input_mint="So11111111111111111111111111111111111111112",
+            output_mint="J1toso9zB7SB28t7GKsve8Wnw2S6WyzNc97BwM9Trevj",
+            amount=180000000, 
+            slippage_bps=50
         )
-        
-        # In the 2026 SDK, transaction_data contains the signature
-        print(f"Success! Your $31 is now earning Jito MEV rewards.")
-        print(f"Check your wallet for JitoSOL.")
+        print(f"✅ Yield Swap Complete: {tx}")
     except Exception as e:
-        print(f"Swap Failed: {e}")
+        print(f"⚠️ Swap already completed or failed: {e}")
+
+    # 2. The Heartbeat Loop (Keeps Render "Live")
+    print("📈 Entering Monitoring Mode (24/7)...")
+    while True:
+        try:
+            bal = (await async_client.get_balance(keypair.pubkey())).value
+            print(f"Omnicore Heartbeat: Current Balance {bal} lamports")
+            await asyncio.sleep(60) # Checks every minute to keep logs active
+        except Exception as e:
+            print(f"Heartbeat error: {e}")
+            await asyncio.sleep(10)
 
 if __name__ == "__main__":
     asyncio.run(main())
