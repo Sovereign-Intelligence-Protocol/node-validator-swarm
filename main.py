@@ -1,9 +1,3 @@
-/* ==========================================================
- * S.I.P. OMNICORE v35.8 - TITAN OVERLORD EDITION
- * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
- * FRAGMENT PURGE & RENT RECLAMATION UPGRADE
- * ========================================================== */
-
 import os
 import json
 import time
@@ -60,7 +54,6 @@ def broadcast(level, msg):
     logger.info(out)
     try:
         if Config.ADMIN_ID:
-            # Ensure ADMIN_ID is treated as a string/integer correctly for telebot
             bot.send_message(Config.ADMIN_ID, out)
     except: pass
 
@@ -128,9 +121,7 @@ def handle_health(message):
 @bot.message_handler(commands=['audit'])
 def handle_audit(message):
     try:
-        # Fixed: get_balance().value returns the integer Lamports directly in modern solana-py
-        bal_resp = solana_client.get_balance(wallet.pubkey())
-        bal = bal_resp.value
+        bal = solana_client.get_balance(wallet.pubkey()).value
         status = "HUNTING" if active_hunt else "IDLE"
         report = (
             f"--- TITAN AUDIT ---\n"
@@ -158,23 +149,23 @@ def run_flask():
 
 # --- 6. MISSION IGNITION ---
 if __name__ == "__main__":
-    # Start Flask in a background thread
+    # Start Flask
     threading.Thread(target=run_flask, daemon=True).start()
     
-    # Heartbeat Pulse Loop (120s) for Render Stability
+    # Render Persistence Heartbeat (120s loop)
     def heartbeat():
         while True:
-            logger.info("HEARTBEAT: System Active")
+            logger.info("HEARTBEAT: Pulse active.")
             time.sleep(120)
     threading.Thread(target=heartbeat, daemon=True).start()
 
     logger.info("--- TITAN OVERLORD DEPLOYED ---")
     
-    # Dual-stack retry logic for Telegram connection stability
+    # Dual-stack retry logic for IPv6/Network stability
     while True:
         try:
             bot.remove_webhook()
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
-            logger.error(f"Connection Error: {e}. Retrying in 5s...")
+            logger.error(f"Polling Error: {e}. Retrying in 5s...")
             time.sleep(5)
