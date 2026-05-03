@@ -126,3 +126,47 @@ def handle_audit(message):
         report = (
             f"--- TITAN AUDIT ---\n"
             f"Status: {status}\n"
+            f"Balance: {bal/1e9:.4f} SOL\n"
+            f"Wallet: {str(wallet.pubkey())[:8]}...\n"
+            f"Fragment Guard: ACTIVE"
+        )
+        bot.reply_to(message, report)
+    except Exception as e:
+        bot.reply_to(message, f"Audit Failed: {e}")
+
+@bot.message_handler(commands=['kill'])
+def handle_kill(message):
+    broadcast("SYSTEM", "Emergency Shutdown Triggered.")
+    os._exit(0)
+
+# --- 5. RENDER HEALTH SHIELD ---
+@app.route("/")
+def health_check():
+    return "v35.8 TITAN OVERLORD ONLINE", 200
+
+def run_flask():
+    app.run(host="0.0.0.0", port=Config.PORT)
+
+# --- 6. MISSION IGNITION ---
+if __name__ == "__main__":
+    # Start Flask
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    # Render Persistence Heartbeat (120s loop)
+    def heartbeat():
+        while True:
+            logger.info("HEARTBEAT: Pulse active.")
+            time.sleep(120)
+    threading.Thread(target=heartbeat, daemon=True).start()
+
+    logger.info("--- TITAN OVERLORD DEPLOYED ---")
+    
+    # Dual-stack retry logic for network stability
+    while True:
+        try:
+            bot.delete_webhook()
+            time.sleep(2)
+            bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
+        except Exception as e:
+            logger.error(f"Polling Error: {e}. Retrying in 10s...")
+            time.sleep(10)
