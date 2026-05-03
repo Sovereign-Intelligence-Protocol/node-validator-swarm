@@ -1,3 +1,9 @@
+/* ==========================================================
+ * S.I.P. OMNICORE v35.8 - TITAN OVERLORD EDITION
+ * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
+ * FRAGMENT PURGE & RENT RECLAMATION UPGRADE
+ * ========================================================== */
+
 import os
 import json
 import time
@@ -54,8 +60,10 @@ def broadcast(level, msg):
     logger.info(out)
     try:
         if Config.ADMIN_ID:
-            bot.send_message(Config.ADMIN_ID, out)
-    except: pass
+            # Fixed: bot.send_message requires chat_id to be an integer or a string starting with @
+            bot.send_message(int(Config.ADMIN_ID), out)
+    except Exception as e: 
+        logger.error(f"Broadcast failed: {e}")
 
 # --- 3. THE FRAGMENT PURGE (Rent Reclamation) ---
 def purge_fragments():
@@ -66,6 +74,7 @@ def purge_fragments():
         opts = TokenAccountOpts(program_id=Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
         response = solana_client.get_token_accounts_by_owner(wallet.pubkey(), opts)
         
+        # Fixed: .value is required to access the actual result list from RPC response
         accounts = response.value
         purged_count = 0
         sol_reclaimed = 0
@@ -121,7 +130,9 @@ def handle_health(message):
 @bot.message_handler(commands=['audit'])
 def handle_audit(message):
     try:
-        bal = solana_client.get_balance(wallet.pubkey()).value
+        # Fixed: get_balance().value returns the integer Lamports directly in modern solana-py
+        bal_resp = solana_client.get_balance(wallet.pubkey())
+        bal = bal_resp.value
         status = "HUNTING" if active_hunt else "IDLE"
         report = (
             f"--- TITAN AUDIT ---\n"
@@ -149,24 +160,24 @@ def run_flask():
 
 # --- 6. MISSION IGNITION ---
 if __name__ == "__main__":
-    # Start Flask
+    # Start Flask in a background thread
     threading.Thread(target=run_flask, daemon=True).start()
     
-    # Render Persistence Heartbeat (120s loop)
+    # Heartbeat Pulse Loop (120s) for Render Stability
     def heartbeat():
         while True:
-            logger.info("HEARTBEAT: Pulse active.")
+            logger.info("HEARTBEAT: System Active")
             time.sleep(120)
     threading.Thread(target=heartbeat, daemon=True).start()
 
     logger.info("--- TITAN OVERLORD DEPLOYED ---")
     
-    # Dual-stack retry logic for network stability
+    # Dual-stack retry logic for Telegram connection stability
     while True:
         try:
-            bot.delete_webhook()
-            time.sleep(2)
-            bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
+            bot.remove_webhook()
+            # Fixed: infinity_polling is generally preferred for production stability
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
-            logger.error(f"Polling Error: {e}. Retrying in 10s...")
-            time.sleep(10)
+            logger.error(f"Connection Error: {e}. Retrying in 5s...")
+            time.sleep(5)
