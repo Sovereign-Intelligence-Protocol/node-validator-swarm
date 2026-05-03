@@ -1,51 +1,41 @@
-import os, asyncio, httpx, base58
+import os, asyncio, httpx
 from flask import Flask
 
-# --- LOAD SECRETS ---
+# 1. IMMEDIATE CONFIG CHECK
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-# Fallback to local string if env is missing (for testing ONLY)
-# TOKEN = "YOUR_TOKEN_HERE" 
-# CHAT_ID = "YOUR_CHAT_ID_HERE"
 
 app = Flask(__name__)
 
-async def force_send_ping():
-    """Forces Telegram to talk, no matter what happened before."""
-    if not TOKEN or not CHAT_ID:
-        print("CRITICAL: Missing TOKEN or CHAT_ID in Render Environment!")
+async def send_emergency_ping():
+    # If variables are missing, this will show up in your Render logs
+    if not TOKEN: 
+        print("CRITICAL ERROR: TELEGRAM_BOT_TOKEN is missing from Render Env!")
         return
-        
+    if not CHAT_ID:
+        print("CRITICAL ERROR: TELEGRAM_CHAT_ID is missing from Render Env!")
+        return
+
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": str(CHAT_ID).strip(), "text": "🎯 OMNICORE: Connection established.", "parse_mode": "Markdown"}
+    
     async with httpx.AsyncClient() as client:
-        # 1. DELETE any old connection settings
+        # Force clear any old webhooks
         await client.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True")
-        
-        # 2. SEND the message
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {
-            "chat_id": str(CHAT_ID).strip(), 
-            "text": "🎯 OMNICORE ONLINE: Connection Hard-Reset Successful.",
-            "parse_mode": "Markdown"
-        }
-        
-        response = await client.post(url, json=payload, timeout=15.0)
-        
-        # 3. PRINT everything to logs
-        print(f"DEBUG: Status Code: {response.status_code}")
-        print(f"DEBUG: Telegram Response: {response.text}")
+        r = await client.post(url, json=payload, timeout=15.0)
+        print(f"TELEGRAM STATUS: {r.status_code}")
+        print(f"TELEGRAM RESPONSE: {r.text}")
 
 @app.route('/')
 def home():
-    # This triggers the message whenever Render pings the health check
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(force_send_ping())
-        loop.close()
+        asyncio.run(send_emergency_ping())
+        return "SUCCESS", 200
     except Exception as e:
-        print(f"ERROR during trigger: {e}")
-    return "SIP OMNICORE IS LIVE", 200
+        print(f"PYTHON ERROR: {e}")
+        return f"FAILED: {e}", 500
 
 if __name__ == "__main__":
+    # Render requires port 10000
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
