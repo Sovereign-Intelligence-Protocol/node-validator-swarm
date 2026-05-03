@@ -1,8 +1,8 @@
-/* ==========================================================
- * S.I.P. OMNICORE v35.8 - TITAN OVERLORD EDITION
- * HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
- * FRAGMENT PURGE & RENT RECLAMATION UPGRADE
- * ========================================================== */
+# ==========================================================
+# S.I.P. OMNICORE v35.8 - TITAN OVERLORD EDITION
+# HEAVYWEIGHT DEPLOYMENT - SOLANA MAINNET
+# FRAGMENT PURGE & RENT RECLAMATION UPGRADE
+# ==========================================================
 
 import os
 import json
@@ -60,10 +60,9 @@ def broadcast(level, msg):
     logger.info(out)
     try:
         if Config.ADMIN_ID:
-            # Fixed: bot.send_message requires chat_id to be an integer or a string starting with @
+            # Ensure ADMIN_ID is cast to int for telebot
             bot.send_message(int(Config.ADMIN_ID), out)
-    except Exception as e: 
-        logger.error(f"Broadcast failed: {e}")
+    except: pass
 
 # --- 3. THE FRAGMENT PURGE (Rent Reclamation) ---
 def purge_fragments():
@@ -74,7 +73,6 @@ def purge_fragments():
         opts = TokenAccountOpts(program_id=Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
         response = solana_client.get_token_accounts_by_owner(wallet.pubkey(), opts)
         
-        # Fixed: .value is required to access the actual result list from RPC response
         accounts = response.value
         purged_count = 0
         sol_reclaimed = 0
@@ -176,7 +174,6 @@ if __name__ == "__main__":
     while True:
         try:
             bot.remove_webhook()
-            # Fixed: infinity_polling is generally preferred for production stability
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             logger.error(f"Connection Error: {e}. Retrying in 5s...")
