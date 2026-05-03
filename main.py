@@ -1,58 +1,40 @@
-import os, asyncio, base58, httpx
+import os, asyncio, httpx
 from flask import Flask
 from threading import Thread
 
-# --- 1. RENDER HEARTBEAT (FLASK) ---
-app = Flask(__name__)
-
-@app.route('/')
-def health():
-    # This keeps the Render status "Live"
-    return "OMNICORE: TRADING ACTIVE", 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-# --- 2. TELEGRAM CONFIG ---
+# --- CONFIG ---
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-async def send_tg(text):
-    """Reliable Telegram sender."""
-    if not TG_TOKEN or not TG_CHAT_ID:
-        print("!!! TELEGRAM VARIABLES MISSING !!!")
-        return
+app = Flask(__name__)
+
+async def send_tg_async(text):
+    """The actual sender logic."""
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     payload = {"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     async with httpx.AsyncClient() as client:
         try:
+            # Drop old updates to prevent the 409 Conflict
+            await client.get(f"https://api.telegram.org/bot{TG_TOKEN}/deleteWebhook?drop_pending_updates=True")
             r = await client.post(url, json=payload, timeout=10.0)
-            print(f"Telegram Log: {r.status_code}")
+            print(f"Telegram API Status: {r.status_code}")
         except Exception as e:
-            print(f"Telegram Err: {e}")
+            print(f"Telegram Error: {e}")
 
-# --- 3. THE MAIN TRADING/MONITORING LOOP ---
-async def start_bot():
-    # Step 1: Handshake
-    print("Handshake initializing...")
-    await send_tg("🚀 *S.I.P. Omnicore: Predator Engaged.* System is 24/7 Live.")
-    
-    # Step 2: The Money Loop
-    while True:
-        try:
-            # This is where we will insert your balance/price checks
-            print("Engine Scanning...")
-            await asyncio.sleep(60) # Scan every minute
-        except Exception as e:
-            print(f"Loop error: {e}")
-            await asyncio.sleep(10)
+@app.route('/')
+def health():
+    # TRIGGER: When Render pings this URL, it forces the Telegram message
+    # We run it in a new loop so it doesn't block the web response
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(send_tg_async("🎯 *S.I.P. Omnicore: Triggered.* Handshake received via Render Health Check."))
+    return "OMNICORE: ONLINE", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    # 'threaded=True' allows the health check to trigger the message without crashing
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
 if __name__ == "__main__":
-    # Start Flask in a background thread to satisfy Render
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-    
-    # Run the Bot in the main async loop
-    asyncio.run(start_bot())
+    print("Direct Shot Engine Starting...")
+    run_flask()
