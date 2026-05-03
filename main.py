@@ -1,107 +1,67 @@
-import os
-import asyncio
-import threading
-import base58
-import httpx
+import os, asyncio, threading, base58, httpx
 from flask import Flask
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
+from solders.transaction import VersionedTransaction
 
-# --- 1. HEARTBEAT SETUP (Stops Render Restarts) ---
+# --- RENDER HEARTBEAT ---
 app = Flask(__name__)
-
 @app.route('/')
-def health():
-    return "S.I.P. Omnicore: ONLINE", 200
-
+def health(): return "OMNICORE: TRADING ACTIVE", 200
 def run_heartbeat():
-    try:
-        # Bind to Render's dynamic port immediately
-        port = int(os.environ.get("PORT", 10000))
-        app.run(host='0.0.0.0', port=port)
-    except Exception as e:
-        print(f"Heartbeat server failed: {e}")
-
-# Start the server thread immediately
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 threading.Thread(target=run_heartbeat, daemon=True).start()
 
-# --- 2. CONFIGURATION ---
+# --- CONFIG ---
 RPC = os.getenv("RPC_URL")
 KEY = os.getenv("PRIVATE_KEY")
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 JITOSOL_MINT = "J1toso9zB7SB28t7GKsve8Wnw2S6WyzNc97BwM9Trevj"
+SOL_MINT = "So11111111111111111111111111111111111111112"
 
 async def send_tg(text):
-    """Sends a notification with error logging for Render."""
-    if not TG_TOKEN or not TG_CHAT_ID:
-        print("Telegram variables are missing from Environment tab.")
-        return
-        
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {"chat_id": TG_CHAT_ID, "text": text}
-    
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, json=payload, timeout=10.0)
-            if response.status_code != 200:
-                print(f"Telegram API Error: {response.status_code} - {response.text}")
-            else:
-                print("Telegram message sent successfully.")
-        except Exception as e:
-            print(f"Failed to connect to Telegram: {e}")
+        await client.post(url, json={"chat_id": TG_CHAT_ID, "text": text})
 
-async def get_growth_report():
-    """Calculates balance and current JitoSOL value."""
-    async with AsyncClient(RPC) as client:
-        # Decode the key and get pubkey
-        raw_key = KEY.strip() if KEY else ""
-        kp = Keypair.from_bytes(base58.b58decode(raw_key))
-        pubkey = kp.pubkey()
+async def check_arbitrage(amount_in_lamports):
+    """Checks Jupiter for a profitable JitoSOL <-> SOL swap."""
+    async with httpx.AsyncClient() as client:
+        # Route: SOL to JitoSOL
+        quote_url = f"https://quote-api.jup.ag/v6/quote?inputMint={SOL_MINT}&outputMint={JITOSOL_MINT}&amount={amount_in_lamports}&slippageBps=1"
+        resp = await client.get(quote_url)
+        quote = resp.json()
         
-        # Check Token Account
-        resp = await client.get_token_accounts_by_owner(
-            pubkey, 
-            {"mint": Pubkey.from_string(JITOSOL_MINT)},
-            encoding="jsonParsed"
-        )
-        
-        if not resp.value:
-            return f"🛡️ S.I.P. Omnicore\nAccount: {pubkey}\nStatus: Monitoring (No JitoSOL detected)"
+        out_amount = int(quote.get('outAmount', 0))
+        # Logic: If outAmount > inAmount (plus a small buffer for fees), we found a gap
+        if out_amount > amount_in_lamports * 1.001: # 0.1% profit threshold
+            return True, quote
+    return False, None
 
-        amount = resp.value[0].account.data.parsed['info']['tokenAmount']['uiAmount']
-        
-        # Get Price via Jupiter
-        async with httpx.AsyncClient() as session:
-            p_resp = await session.get(f"https://api.jup.ag/price/v2?ids={JITOSOL_MINT}")
-            sol_price = float(p_resp.json()['data'][JITOSOL_MINT]['price'])
-
-        return (
-            f"📈 OMNICORE GROWTH REPORT\n"
-            f"Account: {pubkey}\n"
-            f"Holding: {amount:.4f} JitoSOL\n"
-            f"SOL Value: {amount * sol_price:.4f} SOL\n"
-            f"Status: Predator Engaged"
-        )
-
-async def main():
-    # Initial alert to confirm the bot is stable and live
-    print("System initializing...")
-    await send_tg("🚀 S.I.P. Omnicore: Predator Engaged. System is stable and monitoring growth.")
+async def monitor_loop():
+    await send_tg("🚀 S.I.P. Omnicore: Trading Engine Engaged.")
+    
+    # We use 0.1 SOL as a test trade size
+    trade_size = 100_000_000 
     
     while True:
         try:
-            report = await get_growth_report()
-            await send_tg(report)
-            # Send report every hour
-            await asyncio.sleep(3600) 
+            is_profitable, quote = await check_arbitrage(trade_size)
+            
+            if is_profitable:
+                # In a full 'unrestricted' mode, we would execute the swap here.
+                # For now, we alert your Telegram so you can see the 'Money' found.
+                profit = (int(quote['outAmount']) - trade_size) / 1e9
+                await send_tg(f"💰 PROFIT FOUND: {profit:.6f} SOL gap detected on JitoSOL pair!")
+            
+            # Scan every 10 seconds (Render can handle this easily)
+            await asyncio.sleep(10)
         except Exception as e:
-            print(f"Loop error: {e}")
-            await asyncio.sleep(60)
+            print(f"Engine Error: {e}")
+            await asyncio.sleep(30)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(monitor_loop())
