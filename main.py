@@ -3,7 +3,6 @@ from flask import Flask
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
-from solders.transaction import VersionedTransaction
 
 # --- RENDER HEARTBEAT ---
 app = Flask(__name__)
@@ -23,44 +22,58 @@ JITOSOL_MINT = "J1toso9zB7SB28t7GKsve8Wnw2S6WyzNc97BwM9Trevj"
 SOL_MINT = "So11111111111111111111111111111111111111112"
 
 async def send_tg(text):
+    """Hardened Telegram sender with logging."""
+    if not TG_TOKEN or not TG_CHAT_ID:
+        print("!!! TELEGRAM ERROR: Missing Token or Chat ID in Environment Variables !!!")
+        return
+
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+    payload = {"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "Markdown"}
+    
     async with httpx.AsyncClient() as client:
-        await client.post(url, json={"chat_id": TG_CHAT_ID, "text": text})
+        try:
+            # Added a 10s timeout to prevent hanging
+            resp = await client.post(url, json=payload, timeout=10.0)
+            if resp.status_code == 200:
+                print(f"Telegram Sent: {text[:20]}...")
+            else:
+                print(f"!!! TELEGRAM FAIL: {resp.status_code} - {resp.text}")
+                print(f"Check if you have messaged your bot and if Chat ID {TG_CHAT_ID} is correct.")
+        except Exception as e:
+            print(f"!!! TELEGRAM CONNECTION ERROR: {e}")
 
 async def check_arbitrage(amount_in_lamports):
-    """Checks Jupiter for a profitable JitoSOL <-> SOL swap."""
+    """Jupiter Price Check."""
     async with httpx.AsyncClient() as client:
-        # Route: SOL to JitoSOL
-        quote_url = f"https://quote-api.jup.ag/v6/quote?inputMint={SOL_MINT}&outputMint={JITOSOL_MINT}&amount={amount_in_lamports}&slippageBps=1"
-        resp = await client.get(quote_url)
-        quote = resp.json()
-        
-        out_amount = int(quote.get('outAmount', 0))
-        # Logic: If outAmount > inAmount (plus a small buffer for fees), we found a gap
-        if out_amount > amount_in_lamports * 1.001: # 0.1% profit threshold
-            return True, quote
+        try:
+            quote_url = f"https://quote-api.jup.ag/v6/quote?inputMint={SOL_MINT}&outputMint={JITOSOL_MINT}&amount={amount_in_lamports}&slippageBps=1"
+            resp = await client.get(quote_url, timeout=5.0)
+            quote = resp.json()
+            out_amount = int(quote.get('outAmount', 0))
+            if out_amount > (amount_in_lamports * 1.001): 
+                return True, quote
+        except:
+            pass
     return False, None
 
 async def monitor_loop():
-    await send_tg("🚀 S.I.P. Omnicore: Trading Engine Engaged.")
+    # TEST MESSAGE: If you don't see this, the variables are wrong
+    print("Attempting initial Telegram handshake...")
+    await send_tg("🚀 *S.I.P. Omnicore Status:* Hardened Handshake Successful. Trading Engine Engaged.")
     
-    # We use 0.1 SOL as a test trade size
-    trade_size = 100_000_000 
+    trade_size = 100_000_000 # 0.1 SOL
     
     while True:
         try:
             is_profitable, quote = await check_arbitrage(trade_size)
-            
             if is_profitable:
-                # In a full 'unrestricted' mode, we would execute the swap here.
-                # For now, we alert your Telegram so you can see the 'Money' found.
                 profit = (int(quote['outAmount']) - trade_size) / 1e9
-                await send_tg(f"💰 PROFIT FOUND: {profit:.6f} SOL gap detected on JitoSOL pair!")
+                await send_tg(f"💰 *PROFIT ALERT:* {profit:.6f} SOL arbitrage gap detected!")
             
-            # Scan every 10 seconds (Render can handle this easily)
+            # Fast scan (every 10s)
             await asyncio.sleep(10)
         except Exception as e:
-            print(f"Engine Error: {e}")
+            print(f"Monitor Loop Error: {e}")
             await asyncio.sleep(30)
 
 if __name__ == "__main__":
